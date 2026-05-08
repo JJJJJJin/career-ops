@@ -2,6 +2,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
+import { defaultModelFor, PROVIDERS, type ProviderName } from './llm/providers.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // src/shared/config.ts → repo root is two levels up.
@@ -39,12 +40,30 @@ function parseList(value: string | undefined, fallback: string[]): string[] {
     .filter(Boolean);
 }
 
+function parseProvider(value: string | undefined, fallback: ProviderName): ProviderName {
+  if (!value) return fallback;
+  if (value in PROVIDERS) return value as ProviderName;
+  throw new Error(
+    `Invalid provider "${value}". Valid: ${Object.keys(PROVIDERS).join(', ')}.`,
+  );
+}
+
+const primaryProvider = parseProvider(process.env.LLM_PROVIDER, 'openai');
+const fallbackProvider = process.env.LLM_FALLBACK_PROVIDER === ''
+  ? null
+  : parseProvider(process.env.LLM_FALLBACK_PROVIDER, 'deepseek');
+
 export const config = {
   repoRoot: REPO_ROOT,
 
   llm: {
-    anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? '',
-    model: process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6',
+    provider: primaryProvider,
+    model: process.env.LLM_MODEL ?? defaultModelFor(primaryProvider),
+    fallbackProvider,
+    fallbackModel:
+      fallbackProvider === null
+        ? null
+        : process.env.LLM_FALLBACK_MODEL ?? defaultModelFor(fallbackProvider),
   },
 
   search: {

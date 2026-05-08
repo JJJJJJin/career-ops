@@ -26,7 +26,7 @@ For a full tool catalog and architecture see `README.md`.
 ```bash
 npm install
 npx playwright install chromium
-cp .env.example .env       # set ANTHROPIC_API_KEY
+cp .env.example .env       # set OPENAI_API_KEY (or DEEPSEEK_API_KEY)
 ./scripts/install-skills.sh
 npm run career-ops -- --help
 ```

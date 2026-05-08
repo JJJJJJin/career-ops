@@ -7,7 +7,7 @@ chains many depending on what you ask.
 
 > Originally forked from [santifer/career-ops](https://github.com/santifer/career-ops).
 > This fork strips it down to: SEEK Australia only, TypeScript +
-> Playwright, single direct-API stack (Anthropic), every step exposed as
+> Playwright, multi-provider LLM (OpenAI primary + DeepSeek fallback, also Gemini & Groq), every step exposed as
 > a Claude Code skill so your local openclaw can compose them.
 
 ## What you get per job
@@ -211,8 +211,14 @@ matches the target job — it never blends them.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | — | required for any LLM step |
-| `ANTHROPIC_MODEL` | `claude-sonnet-4-6` | use `claude-opus-4-7` for higher quality |
+| `LLM_PROVIDER` | `openai` | primary provider — `openai \| deepseek \| gemini \| groq` |
+| `LLM_MODEL` | `gpt-5.4-nano` | model id; see model presets in `.env.example` |
+| `LLM_FALLBACK_PROVIDER` | `deepseek` | tried when primary errors or its key is missing; set empty to disable |
+| `LLM_FALLBACK_MODEL` | `deepseek-chat` | DeepSeek V3. Use `deepseek-reasoner` for R1. |
+| `OPENAI_API_KEY` | — | required when `LLM_PROVIDER=openai` |
+| `DEEPSEEK_API_KEY` | — | required when DeepSeek is primary OR fallback |
+| `GEMINI_API_KEY` | — | OpenAI-compat endpoint (`generativelanguage.googleapis.com/v1beta/openai`) |
+| `GROQ_API_KEY` | — | OpenAI-compat endpoint (`api.groq.com/openai/v1`) |
 | `SEARCH_KEYWORDS` | grad/junior SWE & AI | comma-separated; one search per keyword |
 | `SEARCH_LOCATION` | `All Australia` | any SEEK-recognised string |
 | `DATE_RANGE_DAYS` | `7` | SEEK supports 1, 3, 7, 14, 31 |
@@ -287,7 +293,7 @@ edit via `mark-job`, never by hand.
 - **SEEK selector drift** — selectors are in `src/tools/seek-search/index.ts` (top of file). Update there when SEEK churns.
 - **CAPTCHA / anti-bot** — use lower `MAX_JOBS_PER_KEYWORD`, increase `SLOW_MO_MS`, or run with `HEADLESS=false` to inspect.
 - **LLM returned non-JSON** — `src/shared/llm/client.ts` has retry + fence-stripping + balanced-object fallback. If it still fails, raise `--max-tokens` (the model may be truncating).
-- **Anthropic rate limits** — set `ANTHROPIC_MODEL=claude-haiku-4-5-20251001` for cheap iteration.
+- **Rate-limited or down provider** — the fallback chain auto-engages on errors. To force a provider switch, change `LLM_PROVIDER` in `.env`. To run cheaply, use `LLM_MODEL=gpt-5.4-nano` or `LLM_PROVIDER=deepseek LLM_MODEL=deepseek-chat`.
 - **Resume PDF fonts blank** — fonts load via relative `../fonts/*.woff2`. The renderer writes the HTML next to `templates/`; if you moved that directory, update `config.paths.templatesDir`.
 
 ## Disclaimer
