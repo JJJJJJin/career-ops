@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{NAME}} — Cover Letter — {{COMPANY}}</title>
+<style>
+  @font-face {
+    font-family: 'Space Grotesk';
+    src: url('../fonts/space-grotesk-latin.woff2') format('woff2');
+    font-weight: 300 700;
+    font-style: normal;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: 'DM Sans';
+    src: url('../fonts/dm-sans-latin.woff2') format('woff2');
+    font-weight: 100 1000;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11.5px;
+    line-height: 1.65;
+    color: #1a1a2e;
+    background: #ffffff;
+  }
+
+  .page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 32px 8px 16px;
+  }
+
+  /* === LETTERHEAD === */
+  .letterhead {
+    margin-bottom: 28px;
+  }
+
+  .letterhead h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #1a1a2e;
+    margin-bottom: 4px;
+  }
+
+  .letterhead-gradient {
+    height: 2px;
+    background: linear-gradient(to right, hsl(187, 74%, 32%), hsl(270, 70%, 45%));
+    border-radius: 1px;
+    margin: 6px 0 10px;
+    width: 56px;
+  }
+
+  .letterhead-contact {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 10.5px;
+    color: #555;
+    line-height: 1.55;
+  }
+
+  .letterhead-contact a {
+    color: #555;
+    text-decoration: none;
+  }
+
+  /* === META BLOCK === */
+  .meta {
+    margin-bottom: 22px;
+  }
+
+  .meta-date {
+    font-size: 11px;
+    color: #555;
+    margin-bottom: 14px;
+  }
+
+  .recipient {
+    font-size: 11px;
+    line-height: 1.5;
+    color: #333;
+  }
+
+  .recipient strong {
+    font-weight: 600;
+    color: hsl(270, 70%, 45%);
+  }
+
+  /* === BODY === */
+  .salutation {
+    margin-bottom: 14px;
+    font-size: 11.5px;
+  }
+
+  .body {
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: #2a2a2a;
+  }
+
+  .body p {
+    margin-bottom: 14px;
+  }
+
+  .body p:last-of-type {
+    margin-bottom: 18px;
+  }
+
+  /* === SIGN OFF === */
+  .signoff {
+    margin-top: 22px;
+    font-size: 11.5px;
+  }
+
+  .signoff-name {
+    margin-top: 4px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    color: hsl(270, 70%, 45%);
+  }
+
+  @media print {
+    .page { padding-top: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="letterhead">
+    <h1>{{NAME}}</h1>
+    <div class="letterhead-gradient"></div>
+    <div class="letterhead-contact">{{CONTACT_LINE}}</div>
+  </div>
+
+  <div class="meta">
+    <div class="meta-date">{{DATE}}</div>
+    <div class="recipient">{{RECIPIENT_BLOCK}}</div>
+  </div>
+
+  <div class="salutation">{{SALUTATION}}</div>
+
+  <div class="body">{{BODY_PARAGRAPHS}}</div>
+
+  <div class="signoff">
+    {{CLOSING}}
+    <div class="signoff-name">{{NAME}}</div>
+  </div>
+
+</div>
+</body>
+</html>
