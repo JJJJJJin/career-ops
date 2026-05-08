@@ -1,47 +1,37 @@
-# Personal data (user fills these)
-cv.md
+# ─── Personal data ────────────────────────────────────────────────────
+profile/profile.md
+profile/profile.json
+profile/.profile.hash
+
+# ─── Generated ────────────────────────────────────────────────────────
+data/*.sqlite3
+data/*.sqlite3-shm
+data/*.sqlite3-wal
 data/applications.md
-data/pipeline.md
-data/scan-history.tsv
-reports/*.md
-!reports/.gitkeep
-output/*
-!output/.gitkeep
-batch/logs/*
-!batch/logs/.gitkeep
-batch/batch-state.tsv
-batch/batch-input.tsv
-batch/tracker-additions/**/*.tsv
-!batch/tracker-additions/.gitkeep
-jds/*
-!jds/.gitkeep
+output/
+reports/
+.web-cache/
 
-# Writing samples (user's personal files — never committed)
-writing-samples/*
-!writing-samples/README.md
+# ─── Build artefacts ──────────────────────────────────────────────────
+dist/
+*.tsbuildinfo
 
-# User config and customization (never auto-updated)
-config/profile.yml
-portals.yml
-modes/_profile.md
-.update-dismissed
-.update-lock
-
-# Secrets (never commit — use .env.example as template)
+# ─── Secrets ──────────────────────────────────────────────────────────
 .env
+.env.local
 
-# Generated
-.resolved-prompt-*
+# ─── Node ─────────────────────────────────────────────────────────────
 node_modules/
+package-lock.json
 bun.lock
+pnpm-lock.yaml
+yarn.lock
 
-# OS
+# ─── OS / IDE ─────────────────────────────────────────────────────────
 .DS_Store
-*.mov
-*.mp4
+.idea/
+.vscode/
 
-# Claude Code local
+# ─── Claude Code local ────────────────────────────────────────────────
 .claude/settings.local.json
 .claude/memory/
-career-dashboard
-package-lock.json
