@@ -1,0 +1,88 @@
+// Centralized env loading. All paths resolve to absolute against repo root.
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+// src/shared/config.ts → repo root is two levels up.
+export const REPO_ROOT = path.resolve(here, '../..');
+
+dotenv.config({ path: path.join(REPO_ROOT, '.env') });
+
+function resolvePath(value: string | undefined, fallback: string): string {
+  const raw = value && value.trim() ? value : fallback;
+  return path.isAbsolute(raw) ? raw : path.join(REPO_ROOT, raw);
+}
+
+function parseInt10(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function parseFloat10(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const n = parseFloat(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function parseBool(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) return fallback;
+  return value === '1' || value.toLowerCase() === 'true';
+}
+
+function parseList(value: string | undefined, fallback: string[]): string[] {
+  if (!value) return fallback;
+  return value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export const config = {
+  repoRoot: REPO_ROOT,
+
+  llm: {
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? '',
+    model: process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6',
+  },
+
+  search: {
+    keywords: parseList(process.env.SEARCH_KEYWORDS, [
+      'graduate software engineer',
+      'junior software engineer',
+      'ai engineer',
+      'machine learning engineer',
+    ]),
+    location: process.env.SEARCH_LOCATION ?? 'All Australia',
+    days: parseInt10(process.env.DATE_RANGE_DAYS, 7),
+    maxJobsPerKeyword: parseInt10(process.env.MAX_JOBS_PER_KEYWORD, 40),
+  },
+
+  browser: {
+    headless: parseBool(process.env.HEADLESS, true),
+    slowMoMs: parseInt10(process.env.SLOW_MO_MS, 120),
+  },
+
+  paths: {
+    profileDir: resolvePath(process.env.PROFILE_DIR, 'profile'),
+    dbPath: resolvePath(process.env.DB_PATH, 'data/seek.sqlite3'),
+    applicationsDir: resolvePath(process.env.APPLICATIONS_DIR, 'output'),
+    reportsDir: resolvePath(process.env.REPORTS_DIR, 'reports'),
+    templatesDir: path.join(REPO_ROOT, 'templates'),
+    fontsDir: path.join(REPO_ROOT, 'fonts'),
+  },
+
+  scoring: {
+    strongThreshold: parseFloat10(process.env.SCORE_THRESHOLD_STRONG, 4.0),
+    borderlineThreshold: 3.0,
+  },
+} as const;
+
+export function profileMarkdownPath(): string {
+  return path.join(config.paths.profileDir, 'profile.md');
+}
+
+export function profileJsonPath(): string {
+  return path.join(config.paths.profileDir, 'profile.json');
+}
