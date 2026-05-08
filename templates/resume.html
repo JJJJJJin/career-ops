@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="{{LANG}}">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{NAME}} — CV</title>
+<title>{{NAME}} — Resume</title>
 <style>
   @font-face {
     font-family: 'Space Grotesk';
@@ -64,7 +64,7 @@
 
   .page {
     width: 100%;
-    max-width: {{PAGE_WIDTH}};
+    max-width: 800px;
     margin: 0 auto;
     padding: 2px 0;
   }
@@ -356,62 +356,29 @@
   <div class="header avoid-break">
     <h1>{{NAME}}</h1>
     <div class="header-gradient"></div>
-    <div class="contact-row">
-      <span>{{PHONE}}</span>
-      <span class="separator">|</span>
-      <span>{{EMAIL}}</span>
-      <span class="separator">|</span>
-      <a href="{{LINKEDIN_URL}}">{{LINKEDIN_DISPLAY}}</a>
-      <span class="separator">|</span>
-      <a href="{{PORTFOLIO_URL}}">{{PORTFOLIO_DISPLAY}}</a>
-      <span class="separator">|</span>
-      <span>{{LOCATION}}</span>
-    </div>
+    <div class="contact-row">{{CONTACT_ROW}}</div>
   </div>
 
-  <!-- PROFESSIONAL SUMMARY -->
-  <div class="section avoid-break">
-    <div class="section-title">{{SECTION_SUMMARY}}</div>
-    <div class="summary-text">{{SUMMARY_TEXT}}</div>
-  </div>
+  <!-- SUMMARY -->
+  {{SUMMARY_BLOCK}}
 
   <!-- CORE COMPETENCIES -->
-  <div class="section">
-    <div class="section-title">{{SECTION_COMPETENCIES}}</div>
-    <div class="competencies-grid">
-      {{COMPETENCIES}}
-    </div>
-  </div>
+  {{COMPETENCIES_BLOCK}}
 
   <!-- WORK EXPERIENCE -->
-  <div class="section">
-    <div class="section-title">{{SECTION_EXPERIENCE}}</div>
-    {{EXPERIENCE}}
-  </div>
+  {{EXPERIENCE_BLOCK}}
 
   <!-- PROJECTS -->
-  <div class="section avoid-break">
-    <div class="section-title">{{SECTION_PROJECTS}}</div>
-    {{PROJECTS}}
-  </div>
+  {{PROJECTS_BLOCK}}
 
   <!-- EDUCATION -->
-  <div class="section avoid-break">
-    <div class="section-title">{{SECTION_EDUCATION}}</div>
-    {{EDUCATION}}
-  </div>
+  {{EDUCATION_BLOCK}}
 
   <!-- CERTIFICATIONS -->
-  <div class="section avoid-break">
-    <div class="section-title">{{SECTION_CERTIFICATIONS}}</div>
-    {{CERTIFICATIONS}}
-  </div>
+  {{CERTIFICATIONS_BLOCK}}
 
   <!-- SKILLS -->
-  <div class="section avoid-break">
-    <div class="section-title">{{SECTION_SKILLS}}</div>
-    {{SKILLS}}
-  </div>
+  {{SKILLS_BLOCK}}
 
 </div>
 </body>
