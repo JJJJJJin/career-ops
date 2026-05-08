@@ -1,10 +1,10 @@
 // SQLite store wrapper. Singleton — every tool imports `db` from here.
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 import { config } from '../config.js';
 import { createLogger } from '../logger.js';
+import { SCHEMA_SQL } from './schema.js';
 import type {
   ApplicationRow,
   ApplicationStatus,
@@ -16,8 +16,6 @@ import type {
 } from './types.js';
 
 const log = createLogger('db');
-const here = path.dirname(fileURLToPath(import.meta.url));
-const SCHEMA_PATH = path.join(here, 'schema.sql');
 
 type JobRow = {
   job_id: string;
@@ -108,8 +106,7 @@ class DbStore {
   }
 
   private applySchema(db: Database.Database): void {
-    const schema = fs.readFileSync(SCHEMA_PATH, 'utf-8');
-    db.exec(schema);
+    db.exec(SCHEMA_SQL);
   }
 
   init(): void {
