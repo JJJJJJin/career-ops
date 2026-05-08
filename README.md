@@ -40,10 +40,11 @@ npx playwright install chromium
 cp .env.example .env       # set ANTHROPIC_API_KEY
 $EDITOR profile/profile.md  # write your CV (see "Profile format" below)
 
-./scripts/install-skills.sh # symlink openclaw skills into ~/.claude/skills/
+./scripts/install-skills.sh # bakes absolute paths into ~/.claude/skills/career-ops/
 
 # Run from the terminal …
-npm run career-ops -- evaluate-job https://www.seek.com.au/job/12345678
+./scripts/career-ops evaluate-job https://www.seek.com.au/job/12345678
+# (or `npm run career-ops -- evaluate-job <url>` — same thing)
 
 # … or just ask Claude Code:
 #   "should I apply to https://seek.com.au/job/12345678"
