@@ -69,6 +69,7 @@ type PageData = {
   jsonLdRaw: string[];
   nextData: string | null;
   visibleText: string;
+  fullText: string;
   title: string;
 };
 
@@ -88,8 +89,9 @@ async function readPageData(page: Page): Promise<PageData> {
       document.querySelector('main') ??
       document.body;
     const visibleText = (main as HTMLElement).innerText?.slice(0, 12000) ?? '';
+    const fullText = document.body.innerText?.slice(0, 12000) ?? '';
 
-    return { jsonLdRaw, nextData, visibleText, title };
+    return { jsonLdRaw, nextData, visibleText, fullText, title };
   });
 }
 
@@ -139,6 +141,25 @@ function workTypeFromJsonLd(jp: JsonLdJobPosting): string | null {
   const et = jp.employmentType;
   if (!et) return null;
   return Array.isArray(et) ? et.join(', ') : et;
+}
+
+/** Extract company name from visible page text, right after the job title. */
+function companyFromVisibleText(visibleText: string, title: string): string | null {
+  const lines = visibleText.split('\n').map((l) => l.trim()).filter(Boolean);
+  const titleIndex = lines.findIndex((l) => l === title);
+  if (titleIndex >= 0 && titleIndex + 1 < lines.length) {
+    const candidate = lines[titleIndex + 1];
+    // Skip lines that are obviously not company names (short, starts with digit, known nav items)
+    if (
+      candidate &&
+      candidate.length > 2 &&
+      !/^\d/.test(candidate) &&
+      !/^(skip|sign|back|view|apply|save|share)/i.test(candidate)
+    ) {
+      return candidate;
+    }
+  }
+  return null;
 }
 
 function salaryFromJsonLd(jp: JsonLdJobPosting): string | null {
@@ -259,7 +280,7 @@ async function extractOnPage(page: Page, url: string, opts: ExtractOptions): Pro
   let title = jsonLd?.title ?? data.title;
   const descriptionHtml = jsonLd?.description ?? null;
   let description = descriptionHtml ? htmlToText(descriptionHtml) : '';
-  let company = companyFromJsonLd(jsonLd ?? {}) ?? nextFields.company;
+  let company = companyFromJsonLd(jsonLd ?? {}) ?? nextFields.company ?? companyFromVisibleText(data.fullText, title);
   let location = locationFromJsonLd(jsonLd ?? {}) ?? nextFields.location;
   let workType = workTypeFromJsonLd(jsonLd ?? {}) ?? nextFields.workType;
   let classification = nextFields.classification;
@@ -272,6 +293,13 @@ async function extractOnPage(page: Page, url: string, opts: ExtractOptions): Pro
       'seek-extract: using visible text as description',
     );
     description = data.visibleText;
+  }
+
+  // LLM fallback for company if still missing.
+  if (!company && description.length > 50 && !opts.noLlm) {
+    log.info({ jobId }, 'seek-extract: LLM fallback for company');
+    const llm = await llmExtract(description.substring(0, 3000), title);
+    if (llm?.company) company = llm.company;
   }
 
   // LLM fallback only if everything above failed.

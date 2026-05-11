@@ -91,7 +91,8 @@ async function callOnce<T>(target: ResolvedTarget, opts: CallJsonOptions): Promi
     model: target.model,
     response_format: { type: 'json_object' },
     temperature: opts.temperature ?? 0.2,
-    max_tokens: opts.maxTokens ?? 4096,
+    // Use max_completion_tokens (newer API). max_tokens is deprecated on gpt-5.x+ models.
+    max_completion_tokens: opts.maxTokens ?? 4096,
     messages: [
       { role: 'system', content: opts.systemPrompt },
       { role: 'user', content: opts.userPrompt },
