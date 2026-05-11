@@ -1,6 +1,6 @@
 ---
 name: apply-job
-description: ⭐ Single-job full pipeline — evaluate + generate (resume + cover letter + company brief in parallel) + render PDFs. The deliverable bundle the user actually submits with. Use after the user says "apply", "yes go ahead", or pastes a URL with "give me everything for this".
+description: ⭐ Single-job full pipeline — evaluate + generate (resume + cover letter + company brief in parallel) + render PDFs (all three) + email the PDF bundle to the user's inbox. The deliverable bundle the user actually submits with. Use after the user says "apply", "yes go ahead", or pastes a URL with "give me everything for this".
 ---
 
 # apply-job
@@ -17,7 +17,7 @@ Skip when:
 
 ## How to invoke
 ```
-career-ops apply-job <jobIdOrUrl> [--force] [--reextract] [--skip-brief] [--skip-pdf] [--company-website <url>]
+career-ops apply-job <jobIdOrUrl> [--force] [--reextract] [--skip-brief] [--skip-pdf] [--company-website <url>] [--email | --no-email] [--email-to <addr>]
 ```
 
 ## Inputs
@@ -27,13 +27,16 @@ career-ops apply-job <jobIdOrUrl> [--force] [--reextract] [--skip-brief] [--skip
 - `--skip-brief` — skip company brief (saves one LLM call).
 - `--skip-pdf` — skip PDF rendering (markdown only — fastest iteration).
 - `--company-website <url>` — passed through to generate-company-brief for grounding.
+- `--email` / `--no-email` — force email delivery on/off (default: on when `.env` is configured).
+- `--email-to <addr>` — override the recipient (default: `$EMAIL_TO`).
 
 ## Outputs (per-job folder under output/<company-slug>-<role-slug>/)
 - `resume.json` + `resume.md` + `resume.pdf`
 - `cover_letter.json` + `cover_letter.md` + `cover_letter.pdf`
-- `company_brief.json` + `company_brief.md`
+- `company_brief.json` + `company_brief.md` + `company_brief.pdf`
 - DB: full population of `applications` row.
 - File: `data/applications.md` regenerated.
+- Email: when configured, all three PDFs are sent to `$EMAIL_TO` as attachments.
 
 ## Behavior under eligibility blockers
 - If `flag-eligibility` fires, this tool aborts BEFORE any LLM generation. The application row is written with `recommendation = NOT_FOR_YOU` and the user is told to inspect the flags.
@@ -43,5 +46,11 @@ career-ops apply-job <jobIdOrUrl> [--force] [--reextract] [--skip-brief] [--skip
 
 ## Token cost (per run, no cached state)
 - ~5 LLM calls: summarize + match + resume + cover letter + brief.
-- ~2 PDF render calls (no LLM, just Playwright).
-- With `--skip-brief`: 4 LLM calls.
+- ~3 PDF render calls (no LLM, just Playwright): resume, cover letter, company brief.
+- With `--skip-brief`: 4 LLM calls and 2 PDFs.
+
+## Email delivery
+- Requires `EMAIL_USER`, `EMAIL_APP_PASSWORD`, and `EMAIL_TO` in `.env`. Gmail needs an App Password (not your normal password).
+- Auto-fires once generation finishes. Subject includes company + role + fit score. The three PDFs are attached.
+- Failure is non-fatal — the artefacts still land on disk and the tracker still updates.
+- For ad-hoc file delivery to a group chat via webhook (separate from email), use `send-files`.

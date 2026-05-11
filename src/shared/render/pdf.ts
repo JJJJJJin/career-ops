@@ -57,6 +57,6 @@ export async function renderHtmlToPdf(html: string, opts: PdfOptions): Promise<s
   return opts.outPath;
 }
 
-export function loadTemplate(name: 'resume.html' | 'cover-letter.html'): string {
+export function loadTemplate(name: 'resume.html' | 'cover-letter.html' | 'company-brief.html'): string {
   return fs.readFileSync(path.join(config.paths.templatesDir, name), 'utf-8');
 }

@@ -44,6 +44,10 @@ To install into a different skills directory:
 ### Rendering
 - **[render-resume-pdf](render-resume-pdf/SKILL.md)** — resume.json → resume.pdf
 - **[render-cover-letter-pdf](render-cover-letter-pdf/SKILL.md)** — cover_letter.json → cover_letter.pdf
+- **[render-company-brief-pdf](render-company-brief-pdf/SKILL.md)** — company_brief.json → company_brief.pdf
+
+### Delivery
+- **[send-files](send-files/SKILL.md)** — push one or more local files to a group chat via webhook (WeChat Work today; pluggable)
 
 ### Tracking
 - **[query-jobs](query-jobs/SKILL.md)** — composable DB filters

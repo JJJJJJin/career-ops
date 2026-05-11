@@ -29,6 +29,10 @@ const COMMANDS: Record<string, () => Promise<{ runCli: (argv: string[]) => Promi
   // rendering
   'render-resume-pdf': () => import('./tools/render-resume-pdf/cli.js'),
   'render-cover-letter-pdf': () => import('./tools/render-cover-letter-pdf/cli.js'),
+  'render-company-brief-pdf': () => import('./tools/render-company-brief-pdf/cli.js'),
+
+  // delivery
+  'send-files': () => import('./tools/send-files/cli.js'),
 
   // tracking
   'query-jobs': () => import('./tools/query-jobs/cli.js'),
@@ -47,7 +51,8 @@ const TOOL_GROUPS: Array<{ heading: string; tools: string[] }> = [
   { heading: 'Profile', tools: ['distill-profile'] },
   { heading: 'Evaluation', tools: ['flag-eligibility', 'summarize-job', 'match-job', 'evaluate-job'] },
   { heading: 'Generation', tools: ['generate-resume', 'generate-cover-letter', 'generate-company-brief'] },
-  { heading: 'Rendering', tools: ['render-resume-pdf', 'render-cover-letter-pdf'] },
+  { heading: 'Rendering', tools: ['render-resume-pdf', 'render-cover-letter-pdf', 'render-company-brief-pdf'] },
+  { heading: 'Delivery', tools: ['send-files'] },
   { heading: 'Tracking', tools: ['query-jobs', 'show-job', 'mark-job', 'job-stats', 'render-tracker'] },
   { heading: 'Workflows', tools: ['apply-job', 'daily-pipeline'] },
 ];

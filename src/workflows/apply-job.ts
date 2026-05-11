@@ -14,6 +14,8 @@ import { generateCoverLetter } from '../tools/generate-cover-letter/index.js';
 import { generateCompanyBrief } from '../tools/generate-company-brief/index.js';
 import { renderResumePdf } from '../tools/render-resume-pdf/index.js';
 import { renderCoverLetterPdf } from '../tools/render-cover-letter-pdf/index.js';
+import { renderCompanyBriefPdf } from '../tools/render-company-brief-pdf/index.js';
+import { sendEmail, isEmailConfigured } from '../shared/email/send.js';
 
 const log = createLogger('workflow:apply-job');
 
@@ -26,6 +28,10 @@ export type ApplyOptions = {
   force?: boolean;
   /** Optional company website to ground the company-brief LLM call. */
   companyWebsite?: string;
+  /** Email the generated PDF bundle to EMAIL_TO. Default: on when email is configured. */
+  email?: boolean;
+  /** Override the recipient (otherwise uses EMAIL_TO). */
+  emailTo?: string;
 };
 
 export type ApplyResult = {
@@ -39,9 +45,12 @@ export type ApplyResult = {
     coverLetterMd?: string;
     coverLetterPdf?: string;
     companyBriefMd?: string;
+    companyBriefPdf?: string;
   };
   trackerPath: string;
   skippedDueToEligibility: boolean;
+  emailedTo?: string;
+  emailedFiles?: string[];
 };
 
 export async function applyJob(jobIdOrUrl: string, opts: ApplyOptions = {}): Promise<ApplyResult> {
@@ -83,15 +92,58 @@ export async function applyJob(jobIdOrUrl: string, opts: ApplyOptions = {}): Pro
 
   let resumePdf: string | undefined;
   let coverLetterPdf: string | undefined;
+  let companyBriefPdf: string | undefined;
   if (!opts.skipPdf) {
-    log.info({ jobId }, 'apply-job: stage 3 — render PDFs (parallel)');
-    [resumePdf, coverLetterPdf] = await Promise.all([renderResumePdf(jobId), renderCoverLetterPdf(jobId)]);
+    log.info({ jobId, includeBrief: !!briefRes }, 'apply-job: stage 3 — render PDFs (parallel)');
+    const pdfTasks: Array<Promise<string>> = [renderResumePdf(jobId), renderCoverLetterPdf(jobId)];
+    if (briefRes) pdfTasks.push(renderCompanyBriefPdf(jobId));
+    const pdfs = await Promise.all(pdfTasks);
+    [resumePdf, coverLetterPdf, companyBriefPdf] = pdfs as [string, string, string | undefined];
   }
 
   const trackerPath = writeTracker();
 
+  // Stage 4 — email the PDF bundle to your personal inbox. Default on
+  // when EMAIL_USER + EMAIL_APP_PASSWORD + EMAIL_TO are all set in .env;
+  // disabled with --no-email. Never fatal: delivery failures don't void
+  // a successful generation.
+  let emailedFiles: string[] | undefined;
+  let emailedTo: string | undefined;
+  const wantEmail = opts.email ?? isEmailConfigured();
+  if (wantEmail && !opts.skipPdf) {
+    const filesToSend = [resumePdf, coverLetterPdf, companyBriefPdf].filter(Boolean) as string[];
+    if (filesToSend.length) {
+      try {
+        log.info({ jobId, count: filesToSend.length }, 'apply-job: stage 4 — emailing bundle');
+        const company = evaluation.job.company ?? 'Unknown company';
+        const subject = `${company} — ${evaluation.job.title}  ·  ${evaluation.match.scoreOutOf5}/5 ${evaluation.match.recommendation}`;
+        const body = [
+          `Job: ${evaluation.job.title}`,
+          `Company: ${company}`,
+          `Location: ${evaluation.job.location ?? 'n/a'}`,
+          `Fit: ${evaluation.match.scoreOutOf5}/5  (${evaluation.match.recommendation})`,
+          evaluation.job.url ? `URL: ${evaluation.job.url}` : '',
+          '',
+          `Attached: ${filesToSend.map((f) => f.split('/').pop()).join(', ')}`,
+          '',
+          `— career-ops`,
+        ].filter(Boolean).join('\n');
+        const result = await sendEmail({
+          subject,
+          text: body,
+          attachments: filesToSend.map((p) => ({ path: p })),
+          to: opts.emailTo,
+        });
+        emailedFiles = filesToSend;
+        emailedTo = (result.accepted[0] ?? opts.emailTo);
+      } catch (err) {
+        log.warn({ err: (err as Error).message }, 'apply-job: email delivery failed (non-fatal)');
+      }
+    }
+  }
+
   log.info(
-    { jobId, totalMs: Date.now() - t0, outputDir: resumeRes.outputDir },
+    { jobId, totalMs: Date.now() - t0, outputDir: resumeRes.outputDir, emailed: emailedFiles?.length ?? 0 },
     'apply-job: complete',
   );
 
@@ -106,9 +158,12 @@ export async function applyJob(jobIdOrUrl: string, opts: ApplyOptions = {}): Pro
       coverLetterMd: coverRes.mdPath,
       coverLetterPdf,
       companyBriefMd: briefRes?.mdPath,
+      companyBriefPdf,
     },
     trackerPath,
     skippedDueToEligibility: false,
+    emailedTo,
+    emailedFiles,
   };
 }
 
@@ -119,23 +174,30 @@ export async function runCli(argv: string[]): Promise<void> {
   let skipBrief = false;
   let skipPdf = false;
   let companyWebsite: string | undefined;
+  let email: boolean | undefined;
+  let emailTo: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--force') force = true;
     else if (a === '--reextract') reextract = true;
     else if (a === '--skip-brief') skipBrief = true;
     else if (a === '--skip-pdf') skipPdf = true;
-    else if (a === '--company-website' || a === '--url') {
+    else if (a === '--email') email = true;
+    else if (a === '--no-email') email = false;
+    else if (a === '--email-to') {
+      emailTo = argv[i + 1];
+      i++;
+    } else if (a === '--company-website' || a === '--url') {
       companyWebsite = argv[i + 1];
       i++;
     } else if (a && !a.startsWith('--')) jobIdOrUrl = a;
   }
   if (!jobIdOrUrl) {
-    console.error('Usage: career-ops apply-job <jobIdOrUrl> [--force] [--reextract] [--skip-brief] [--skip-pdf] [--company-website <url>]');
+    console.error('Usage: career-ops apply-job <jobIdOrUrl> [--force] [--reextract] [--skip-brief] [--skip-pdf] [--company-website <url>] [--email | --no-email] [--email-to <addr>]');
     process.exit(2);
   }
 
-  const r = await applyJob(jobIdOrUrl, { force, reextract, skipBrief, skipPdf, companyWebsite });
+  const r = await applyJob(jobIdOrUrl, { force, reextract, skipBrief, skipPdf, companyWebsite, email, emailTo });
 
   if (r.skippedDueToEligibility) {
     process.stdout.write(`🚫 ${r.jobId} skipped — eligibility blocked. See \`career-ops show-job ${r.jobId}\` for details.\n`);
@@ -145,6 +207,10 @@ export async function runCli(argv: string[]): Promise<void> {
   process.stdout.write(`  → ${r.outputDir}\n`);
   if (r.artefacts.resumePdf) process.stdout.write(`     resume.pdf\n`);
   if (r.artefacts.coverLetterPdf) process.stdout.write(`     cover_letter.pdf\n`);
+  if (r.artefacts.companyBriefPdf) process.stdout.write(`     company_brief.pdf\n`);
   if (r.artefacts.companyBriefMd) process.stdout.write(`     company_brief.md\n`);
+  if (r.emailedFiles && r.emailedFiles.length) {
+    process.stdout.write(`\n  📧 emailed ${r.emailedFiles.length} file(s)${r.emailedTo ? ` → ${r.emailedTo}` : ''}\n`);
+  }
   process.stdout.write(`\n  tracker: ${r.trackerPath}\n`);
 }

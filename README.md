@@ -20,10 +20,16 @@ output/<company-slug>-<role-slug>/
 ├── cover_letter.pdf      ← submit this
 ├── cover_letter.md
 ├── cover_letter.json
-├── company_brief.md      ← read before applying / interviewing
+├── company_brief.pdf     ← read before applying / interviewing (or forward to phone)
+├── company_brief.md
 ├── company_brief.json
 └── last-updated-<ts>.txt
 ```
+
+When `EMAIL_USER` / `EMAIL_APP_PASSWORD` / `EMAIL_TO` are set in `.env`,
+`apply-job` automatically emails the three PDFs to your inbox so you
+can review on a phone. For pushing files to a group chat (e.g. a
+personal-AI-agent room), use the standalone `send-files` tool.
 
 …plus a fit score (0–5) and a recommendation (`STRONG`, `BORDERLINE`,
 `SKIP`, `NOT_FOR_YOU`) stored in the local SQLite DB and rendered as
@@ -93,6 +99,13 @@ language. The pure functions are importable from `src/tools/<tool>/index.ts`.
 |---|---|---|
 | **`render-resume-pdf`** | jobId → `resume.pdf` (Playwright HTML→PDF) | no |
 | **`render-cover-letter-pdf`** | jobId → `cover_letter.pdf` | no |
+| **`render-company-brief-pdf`** | jobId → `company_brief.pdf` | no |
+
+### Delivery
+
+| Tool | Contract | LLM? |
+|---|---|---|
+| **`send-files`** | one or more file paths (or `--job <jobId>`) → pushed to a webhook chat (WeChat Work today; pluggable provider layer) | no |
 
 ### Tracking
 
@@ -108,7 +121,7 @@ language. The pure functions are importable from `src/tools/<tool>/index.ts`.
 
 | Tool | Chains |
 |---|---|
-| **`apply-job`** ⭐ | `evaluate-job` → (parallel) `generate-{resume, cover-letter, company-brief}` → (parallel) `render-{resume, cover-letter}-pdf` → `render-tracker` |
+| **`apply-job`** ⭐ | `evaluate-job` → (parallel) `generate-{resume, cover-letter, company-brief}` → (parallel) `render-{resume, cover-letter, company-brief}-pdf` → `render-tracker` → (optional) email PDF bundle to `$EMAIL_TO` |
 | **`daily-pipeline`** | `seek-search` → for each new job: `seek-extract` + `evaluate-job` → optional auto-`apply-job` for top N STRONG matches |
 
 ⭐ = the two main entry points. Most natural-language asks route to one of these.
@@ -137,6 +150,11 @@ career-ops job-stats
 
 # I applied to one
 career-ops mark-job 12345678 applied --notes "applied via SEEK Easy Apply"
+
+# Push a job's PDFs to my personal-AI-agent group chat (separate from email)
+career-ops send-files --job 12345678
+# or send arbitrary files
+career-ops send-files /tmp/screenshot.png /path/to/notes.pdf --text "fyi"
 ```
 
 ## openclaw integration
@@ -230,6 +248,16 @@ matches the target job — it never blends them.
 | `SCORE_THRESHOLD_STRONG` | `4.0` | scoreOutOf5 ≥ this → STRONG |
 | `LOG_LEVEL` | `info` | `debug \| info \| warn \| error \| silent` |
 | `LOG_JSON` | `false` | one-JSON-per-line for log shippers |
+| `EMAIL_HOST` | `smtp.gmail.com` | SMTP host for `apply-job` auto-send |
+| `EMAIL_PORT` | `465` | `465` = implicit TLS, `587` = STARTTLS |
+| `EMAIL_SECURE` | auto | leave blank to derive from port; `true`/`false` to force |
+| `EMAIL_USER` | — | Gmail account; required for email delivery |
+| `EMAIL_APP_PASSWORD` | — | 16-char [Google App Password](https://myaccount.google.com/apppasswords) (NOT your regular Gmail password) |
+| `EMAIL_FROM` | `$EMAIL_USER` | sender address (set if you use an alias) |
+| `EMAIL_TO` | — | recipient — usually your own inbox |
+| `EMAIL_SUBJECT_PREFIX` | `[career-ops]` | prepended to every subject |
+| `WEBHOOK_PROVIDER` | `wecom` | only `wecom` (WeChat Work) is implemented today |
+| `WEBHOOK_URL` | — | default webhook for the `send-files` tool (`?key=...` URL for WeCom) |
 
 ## Eligibility flagging
 
