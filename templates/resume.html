@@ -6,346 +6,221 @@
 <title>{{NAME}} — Resume</title>
 <style>
   @font-face {
-    font-family: 'Space Grotesk';
-    src: url('./fonts/space-grotesk-latin.woff2') format('woff2');
-    font-weight: 300 700;
-    font-style: normal;
-    font-display: swap;
-    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-  }
-
-  @font-face {
-    font-family: 'Space Grotesk';
-    src: url('./fonts/space-grotesk-latin-ext.woff2') format('woff2');
-    font-weight: 300 700;
-    font-style: normal;
-    font-display: swap;
-    unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-  }
-
-  @font-face {
     font-family: 'DM Sans';
-    src: url('./fonts/dm-sans-latin.woff2') format('woff2');
+    src: url('../fonts/dm-sans-latin.woff2') format('woff2');
     font-weight: 100 1000;
     font-style: normal;
     font-display: swap;
     unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
   }
-
   @font-face {
     font-family: 'DM Sans';
-    src: url('./fonts/dm-sans-latin-ext.woff2') format('woff2');
+    src: url('../fonts/dm-sans-latin-ext.woff2') format('woff2');
     font-weight: 100 1000;
     font-style: normal;
     font-display: swap;
     unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
   }
 
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
-
-  html {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
   body {
-    font-family: 'DM Sans', sans-serif;
+    /* Office-style stack: DM Sans is the closest neutral business sans we ship.
+       Aptos/Calibri are listed so a rendering host with those installed will
+       look indistinguishable from the reference PDF. */
+    font-family: 'DM Sans', 'Aptos', 'Calibri', 'Segoe UI', Arial, sans-serif;
     font-size: 11px;
-    line-height: 1.5;
-    color: #1a1a2e;
+    line-height: 1.45;
+    color: #000;
     background: #ffffff;
-    padding: 0;
-    margin: 0;
   }
 
   .page {
-    width: 100%;
-    max-width: 800px;
+    max-width: 760px;
     margin: 0 auto;
-    padding: 2px 0;
+    padding: 4px 4px 0;
   }
 
-  /* === HEADER === */
+  /* === HEADER ============================================================ */
   .header {
-    margin-bottom: 20px;
+    text-align: center;
+    margin-bottom: 10px;
   }
 
   .header h1 {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 28px;
+    font-size: 20px;
     font-weight: 700;
-    color: #1a1a2e;
-    letter-spacing: -0.02em;
-    margin-bottom: 6px;
-    line-height: 1.1;
-  }
-
-  .header-gradient {
-    height: 2px;
-    background: linear-gradient(to right, hsl(187, 74%, 32%), hsl(270, 70%, 45%));
-    border-radius: 1px;
-    margin-bottom: 10px;
+    letter-spacing: -0.01em;
+    color: #000;
+    margin-bottom: 4px;
   }
 
   .contact-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px 14px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 10.5px;
+    font-size: 11px;
+    color: #000;
     line-height: 1.4;
-    color: #555;
   }
 
-  .contact-row a {
-    color: #555;
-    text-decoration: none;
+  .contact-line {
+    display: block;
+    text-align: center;
   }
 
-  .contact-row .separator {
-    color: #ccc;
+  .contact-row a.contact-line {
+    color: #0563C1; /* Office hyperlink blue */
+    text-decoration: underline;
   }
 
-  /* === SECTIONS === */
+  /* === SECTION BANNER ==================================================== */
   .section {
-    margin-bottom: 18px;
+    margin-bottom: 10px;
   }
 
   .section-title {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 12px;
+    background: #D9E2F1;
+    padding: 4px 8px;
+    font-size: 11.5px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: hsl(187, 74%, 32%);
-    border-bottom: 1.5px solid #e2e2e2;
-    padding-bottom: 4px;
-    margin-bottom: 10px;
-    line-height: 1.2;
+    letter-spacing: 0.02em;
+    color: #000;
+    margin-bottom: 7px;
   }
 
-  /* === PROFESSIONAL SUMMARY === */
+  /* === SUMMARY (optional, rendered above EDUCATION when present) ========= */
   .summary-text {
     font-size: 11px;
-    line-height: 1.7;
-    color: #2f2f2f;
+    color: #000;
+    padding: 0 2px;
   }
 
-  /* Links must never break across lines */
-  a {
-    white-space: nowrap;
+  /* === EXPERIENCE & PROJECTS ============================================= */
+  .job, .project, .edu-item {
+    margin-bottom: 10px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    padding: 0 2px;
   }
 
-  /* === CORE COMPETENCIES === */
-  .competencies-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .competency-tag {
-    font-family: 'DM Sans', sans-serif;
-    font-size: 10px;
-    font-weight: 500;
-    color: hsl(187, 74%, 28%);
-    background: hsl(187, 40%, 95%);
-    padding: 4px 10px;
-    border-radius: 3px;
-    border: 1px solid hsl(187, 40%, 88%);
-  }
-
-  /* === WORK EXPERIENCE === */
-  .job {
-    margin-bottom: 14px;
-  }
-
-  .job-header {
+  .job-header, .edu-header {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    gap: 12px;
-    margin-bottom: 4px;
+    gap: 10px;
   }
 
-  .job-company {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 12.5px;
-    font-weight: 600;
-    color: hsl(270, 70%, 45%);
-  }
-
-  .job-period {
-    font-size: 10.5px;
-    color: #777;
-    white-space: nowrap;
-  }
-
-  .job-role {
-    font-size: 11px;
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 6px;
-  }
-
-  .job-location {
-    font-size: 10px;
-    color: #888;
-  }
-
-  .job ul {
-    padding-left: 18px;
-    margin-top: 6px;
-  }
-
-  .job li {
-    font-size: 10.5px;
-    line-height: 1.6;
-    color: #333;
-    margin-bottom: 4px;
-  }
-
-  .job li strong {
-    font-weight: 600;
-  }
-
-  /* === PROJECTS === */
-  .project {
-    margin-bottom: 12px;
-  }
-
-  .project-title {
-    font-family: 'Space Grotesk', sans-serif;
+  .job-role, .edu-degree, .project-title {
+    font-weight: 700;
     font-size: 11.5px;
-    font-weight: 600;
-    color: hsl(270, 70%, 45%);
+    color: #000;
   }
 
+  .job-period, .edu-year {
+    font-weight: 400;
+    font-size: 11px;
+    color: #000;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .job-sub, .edu-sub {
+    font-size: 11px;
+    color: #000;
+    margin-top: 0;
+    margin-bottom: 2px;
+  }
+
+  .job ul, .project ul {
+    list-style: disc;
+    margin: 1px 0 0 22px;
+  }
+
+  .job li, .project li {
+    font-size: 11px;
+    line-height: 1.45;
+    color: #000;
+    margin-bottom: 1px;
+  }
+
+  /* === PROJECTS extras =================================================== */
   .project-badge {
-    font-size: 9px;
-    font-weight: 500;
-    color: hsl(187, 74%, 32%);
-    background: hsl(187, 40%, 95%);
-    padding: 1px 6px;
-    border-radius: 2px;
+    font-size: 10px;
+    color: #444;
+    font-weight: 400;
     margin-left: 6px;
   }
 
   .project-desc {
-    font-size: 10.5px;
-    color: #444;
-    margin-top: 3px;
-    line-height: 1.55;
+    font-size: 11px;
+    color: #000;
+    margin-top: 1px;
   }
 
   .project-tech {
-    font-size: 9.5px;
-    color: #888;
-    margin-top: 3px;
-  }
-
-  /* === EDUCATION === */
-  .edu-item {
-    margin-bottom: 8px;
-  }
-
-  .edu-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 12px;
-  }
-
-  .edu-title {
-    font-weight: 600;
-    font-size: 11px;
-    color: #333;
-  }
-
-  .edu-org {
-    color: hsl(270, 70%, 45%);
-    font-weight: 500;
-  }
-
-  .edu-year {
-    font-size: 10px;
-    color: #777;
-    white-space: nowrap;
-  }
-
-  .edu-desc {
-    font-size: 10px;
-    color: #666;
-    margin-top: 2px;
-    line-height: 1.5;
-  }
-
-  /* === CERTIFICATIONS === */
-  .cert-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 12px;
-    margin-bottom: 6px;
-  }
-
-  .cert-title {
     font-size: 10.5px;
-    font-weight: 500;
-    color: #333;
+    color: #444;
+    margin-top: 2px;
   }
 
-  .cert-org {
-    color: hsl(270, 70%, 45%);
+  /* === EDUCATION ========================================================= */
+  .edu-desc {
+    font-size: 11px;
+    color: #000;
+    margin-top: 1px;
   }
 
-  .cert-year {
-    font-size: 10px;
-    color: #777;
-    white-space: nowrap;
-  }
-
-  /* === SKILLS === */
+  /* === SKILLS — plain "Category: a | b | c" lines, no chips ============== */
   .skills-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 14px;
+    display: block;
+    padding: 0 2px;
   }
 
   .skill-item {
-    font-size: 10.5px;
-    color: #444;
+    font-size: 11px;
+    line-height: 1.5;
+    margin-bottom: 2px;
+    color: #000;
   }
 
   .skill-category {
-    font-weight: 600;
-    color: #333;
-    font-size: 10.5px;
+    font-weight: 400;
   }
 
-  /* === PRINT === */
-  @media print {
-    body {
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-
-    .page {
-      padding: 0;
-    }
+  /* Education details bullet (matches reference layout). */
+  .edu-details {
+    list-style: disc;
+    margin: 1px 0 0 22px;
   }
 
-  /* === PAGE BREAK CONTROL === */
-  .avoid-break,
-  .job,
-  .project,
-  .edu-item,
+  .edu-details li {
+    font-size: 11px;
+    line-height: 1.45;
+    color: #000;
+  }
+
+  /* === CORE COMPETENCIES — inline plain text, no pills =================== */
+  .competencies-text {
+    font-size: 11px;
+    line-height: 1.5;
+    color: #000;
+    padding: 0 2px;
+  }
+
+  /* === CERTIFICATIONS ==================================================== */
   .cert-item {
-    break-inside: avoid;
-    page-break-inside: avoid;
+    font-size: 11px;
+    color: #000;
+    margin-bottom: 2px;
+    padding: 0 2px;
+  }
+
+  .cert-title {
+    font-weight: 400;
+  }
+
+  @media print {
+    .page { padding-top: 0; }
   }
 </style>
 </head>
@@ -353,32 +228,27 @@
 <div class="page">
 
   <!-- HEADER -->
-  <div class="header avoid-break">
+  <div class="header">
     <h1>{{NAME}}</h1>
-    <div class="header-gradient"></div>
     <div class="contact-row">{{CONTACT_ROW}}</div>
   </div>
 
-  <!-- SUMMARY -->
+  <!-- Optional summary, rendered when present -->
   {{SUMMARY_BLOCK}}
 
-  <!-- CORE COMPETENCIES -->
-  {{COMPETENCIES_BLOCK}}
-
-  <!-- WORK EXPERIENCE -->
-  {{EXPERIENCE_BLOCK}}
-
-  <!-- PROJECTS -->
-  {{PROJECTS_BLOCK}}
-
-  <!-- EDUCATION -->
+  <!-- Section order matches the reference layout: Education → Experience → Skills.
+       Projects, competencies, certifications still render if the data has them. -->
   {{EDUCATION_BLOCK}}
 
-  <!-- CERTIFICATIONS -->
-  {{CERTIFICATIONS_BLOCK}}
+  {{EXPERIENCE_BLOCK}}
 
-  <!-- SKILLS -->
+  {{PROJECTS_BLOCK}}
+
   {{SKILLS_BLOCK}}
+
+  {{COMPETENCIES_BLOCK}}
+
+  {{CERTIFICATIONS_BLOCK}}
 
 </div>
 </body>

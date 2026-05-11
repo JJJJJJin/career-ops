@@ -13,25 +13,32 @@ import type { TailoredResume } from '../generate-resume/types.js';
 const log = createLogger('render-resume-pdf');
 
 function buildContactRow(c: TailoredResume['contact']): string {
-  const items: string[] = [];
-  if (c.phone) items.push(`<span>${escapeHtml(c.phone)}</span>`);
-  if (c.email) items.push(`<span>${escapeHtml(c.email)}</span>`);
+  // Classic-resume layout: each contact item on its own centered line. Email
+  // and URLs render as hyperlinks (blue + underline via .contact-line CSS);
+  // phone, location render as plain spans.
+  const lines: string[] = [];
+  if (c.email) {
+    lines.push(`<a class="contact-line" href="mailto:${escapeHtml(c.email)}">${escapeHtml(c.email)}</a>`);
+  }
+  if (c.phone) lines.push(`<span class="contact-line">${escapeHtml(c.phone)}</span>`);
   if (c.linkedinUrl) {
     const text = c.linkedinDisplay ?? c.linkedinUrl.replace(/^https?:\/\//, '');
-    items.push(`<a href="${escapeHtml(c.linkedinUrl)}">${escapeHtml(text)}</a>`);
+    lines.push(`<a class="contact-line" href="${escapeHtml(c.linkedinUrl)}">${escapeHtml(text)}</a>`);
   }
   if (c.portfolioUrl) {
     const text = c.portfolioDisplay ?? c.portfolioUrl.replace(/^https?:\/\//, '');
-    items.push(`<a href="${escapeHtml(c.portfolioUrl)}">${escapeHtml(text)}</a>`);
+    lines.push(`<a class="contact-line" href="${escapeHtml(c.portfolioUrl)}">${escapeHtml(text)}</a>`);
   }
-  if (c.github) items.push(`<a href="${escapeHtml(c.github)}">${escapeHtml(c.github.replace(/^https?:\/\//, ''))}</a>`);
-  if (c.location) items.push(`<span>${escapeHtml(c.location)}</span>`);
-  return items.join('<span class="separator">|</span>');
+  if (c.github) {
+    lines.push(`<a class="contact-line" href="${escapeHtml(c.github)}">${escapeHtml(c.github.replace(/^https?:\/\//, ''))}</a>`);
+  }
+  if (c.location) lines.push(`<span class="contact-line">${escapeHtml(c.location)}</span>`);
+  return lines.join('');
 }
 
 function buildSummary(r: TailoredResume): string {
   if (!r.summary) return '';
-  return `<div class="section avoid-break">
+  return `<div class="section">
     <div class="section-title">Summary</div>
     <div class="summary-text">${inlineMd(r.summary)}</div>
   </div>`;
@@ -39,27 +46,31 @@ function buildSummary(r: TailoredResume): string {
 
 function buildCompetencies(r: TailoredResume): string {
   if (!r.competencies.length) return '';
-  const tags = r.competencies.map((c) => `<span class="competency-tag">${escapeHtml(c)}</span>`).join('\n      ');
+  // Classic-resume style: a single inline line of pipe-separated items, no
+  // pills/tags. Matches the "Soft Skills: a | b | c" line in the reference.
+  const text = r.competencies.map((c) => escapeHtml(c)).join(' | ');
   return `<div class="section">
     <div class="section-title">Core Competencies</div>
-    <div class="competencies-grid">
-      ${tags}
-    </div>
+    <div class="competencies-text">${text}</div>
   </div>`;
 }
 
 function buildExperience(r: TailoredResume): string {
   if (!r.experience.length) return '';
+  // Reference-PDF layout per entry:
+  //   <bold role>                                     <plain period>
+  //   <company>, <location?>          ← plain sub-line
+  //   • highlight bullets…
   const items = r.experience
     .map((e) => {
       const bullets = e.highlights.map((h) => `<li>${inlineMd(h)}</li>`).join('\n        ');
-      const sub = [e.location].filter(Boolean).map((s) => escapeHtml(s ?? '')).join(' ');
+      const sub = [e.company, e.location].filter(Boolean).map((s) => escapeHtml(s ?? '')).join(', ');
       return `<div class="job">
       <div class="job-header">
-        <span class="job-company">${escapeHtml(e.company)}</span>
+        <span class="job-role">${escapeHtml(e.role)}</span>
         <span class="job-period">${escapeHtml(e.period)}</span>
       </div>
-      <div class="job-role">${escapeHtml(e.role)}${sub ? ` <span class="job-location">— ${sub}</span>` : ''}</div>
+      ${sub ? `<div class="job-sub">${sub}</div>` : ''}
       <ul>
         ${bullets}
       </ul>
@@ -80,7 +91,7 @@ function buildProjects(r: TailoredResume): string {
       const bullets = p.highlights.length
         ? `<ul>${p.highlights.map((h) => `<li>${inlineMd(h)}</li>`).join('')}</ul>`
         : '';
-      const tech = p.technologies.length ? `<div class="project-tech">${escapeHtml(p.technologies.join(' · '))}</div>` : '';
+      const tech = p.technologies.length ? `<div class="project-tech">${escapeHtml(p.technologies.join(' | '))}</div>` : '';
       return `<div class="project">
       <div><span class="project-title">${escapeHtml(p.name)}</span>${badge}</div>
       ${p.description ? `<div class="project-desc">${inlineMd(p.description)}</div>` : ''}
@@ -89,7 +100,7 @@ function buildProjects(r: TailoredResume): string {
     </div>`;
     })
     .join('\n    ');
-  return `<div class="section avoid-break">
+  return `<div class="section">
     <div class="section-title">Projects</div>
     ${items}
   </div>`;
@@ -97,18 +108,23 @@ function buildProjects(r: TailoredResume): string {
 
 function buildEducation(r: TailoredResume): string {
   if (!r.education.length) return '';
+  // Reference-PDF layout per entry:
+  //   <bold degree>                                   <plain period>
+  //   <institution>           ← plain sub-line
+  //   <optional details>
   const items = r.education
     .map(
       (ed) => `<div class="edu-item">
       <div class="edu-header">
-        <span class="edu-title">${escapeHtml(ed.degree)} <span class="edu-org">— ${escapeHtml(ed.institution)}</span></span>
+        <span class="edu-degree">${escapeHtml(ed.degree)}</span>
         <span class="edu-year">${escapeHtml(ed.period)}</span>
       </div>
-      ${ed.details ? `<div class="edu-desc">${inlineMd(ed.details)}</div>` : ''}
+      <div class="edu-sub">${escapeHtml(ed.institution)}</div>
+      ${ed.details ? `<ul class="edu-details"><li>${inlineMd(ed.details)}</li></ul>` : ''}
     </div>`,
     )
     .join('\n    ');
-  return `<div class="section avoid-break">
+  return `<div class="section">
     <div class="section-title">Education</div>
     ${items}
   </div>`;
@@ -117,7 +133,7 @@ function buildEducation(r: TailoredResume): string {
 function buildCertifications(r: TailoredResume): string {
   if (!r.certifications.length) return '';
   const items = r.certifications.map((c) => `<div class="cert-item"><span class="cert-title">${inlineMd(c)}</span></div>`).join('\n    ');
-  return `<div class="section avoid-break">
+  return `<div class="section">
     <div class="section-title">Certifications</div>
     ${items}
   </div>`;
@@ -125,12 +141,14 @@ function buildCertifications(r: TailoredResume): string {
 
 function buildSkills(r: TailoredResume): string {
   if (!r.skills.length) return '';
+  // Classic-resume style: one "Category: item | item | item" line per group.
+  // Category bolded, items pipe-separated, all plain text (no chips).
   const items = r.skills
     .map(
-      (g) => `<div class="skill-item"><span class="skill-category">${escapeHtml(g.category)}:</span> ${escapeHtml(g.items.join(' · '))}</div>`,
+      (g) => `<div class="skill-item"><span class="skill-category">${escapeHtml(g.category)}:</span> ${escapeHtml(g.items.join(' | '))}</div>`,
     )
     .join('\n    ');
-  return `<div class="section avoid-break">
+  return `<div class="section">
     <div class="section-title">Skills</div>
     <div class="skills-grid">
       ${items}
