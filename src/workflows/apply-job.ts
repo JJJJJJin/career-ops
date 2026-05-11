@@ -6,6 +6,7 @@
 //
 // Eligibility short-circuits to NOT_FOR_YOU and aborts before any LLM
 // generation calls — saves tokens.
+import path from 'node:path';
 import { createLogger } from '../shared/logger.js';
 import { writeTracker } from '../shared/db/view.js';
 import { evaluateJob } from '../tools/evaluate-job/index.js';
@@ -205,10 +206,10 @@ export async function runCli(argv: string[]): Promise<void> {
   }
   process.stdout.write(`\n✔ ${r.jobId}  ${r.recommendation}  ${r.scoreOutOf5}/5\n`);
   process.stdout.write(`  → ${r.outputDir}\n`);
-  if (r.artefacts.resumePdf) process.stdout.write(`     resume.pdf\n`);
-  if (r.artefacts.coverLetterPdf) process.stdout.write(`     cover_letter.pdf\n`);
-  if (r.artefacts.companyBriefPdf) process.stdout.write(`     company_brief.pdf\n`);
-  if (r.artefacts.companyBriefMd) process.stdout.write(`     company_brief.md\n`);
+  if (r.artefacts.resumePdf) process.stdout.write(`     ${path.basename(r.artefacts.resumePdf)}\n`);
+  if (r.artefacts.coverLetterPdf) process.stdout.write(`     ${path.basename(r.artefacts.coverLetterPdf)}\n`);
+  if (r.artefacts.companyBriefPdf) process.stdout.write(`     ${path.basename(r.artefacts.companyBriefPdf)}\n`);
+  if (r.artefacts.companyBriefMd) process.stdout.write(`     ${path.basename(r.artefacts.companyBriefMd)}\n`);
   if (r.emailedFiles && r.emailedFiles.length) {
     process.stdout.write(`\n  📧 emailed ${r.emailedFiles.length} file(s)${r.emailedTo ? ` → ${r.emailedTo}` : ''}\n`);
   }

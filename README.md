@@ -12,17 +12,19 @@ chains many depending on what you ask.
 
 ## What you get per job
 
+Every artefact is prefixed with the folder's slug (`<company-slug>-<role-slug>`) so files stay self-describing once they're out of the folder (email attachments, chat uploads, etc.).
+
 ```
-output/<company-slug>-<role-slug>/
-├── resume.pdf            ← submit this
-├── resume.md             ← human-readable view
-├── resume.json           ← structured (re-renderable)
-├── cover_letter.pdf      ← submit this
-├── cover_letter.md
-├── cover_letter.json
-├── company_brief.pdf     ← read before applying / interviewing (or forward to phone)
-├── company_brief.md
-├── company_brief.json
+output/<slug>/                                    # <slug> = <company-slug>-<role-slug>
+├── <slug>-resume.pdf            ← submit this
+├── <slug>-resume.md             ← human-readable view
+├── <slug>-resume.json           ← structured (re-renderable)
+├── <slug>-cover_letter.pdf      ← submit this
+├── <slug>-cover_letter.md
+├── <slug>-cover_letter.json
+├── <slug>-company_brief.pdf     ← read before applying / interviewing (or forward to phone)
+├── <slug>-company_brief.md
+├── <slug>-company_brief.json
 └── last-updated-<ts>.txt
 ```
 
@@ -89,17 +91,17 @@ language. The pure functions are importable from `src/tools/<tool>/index.ts`.
 
 | Tool | Contract | LLM? |
 |---|---|---|
-| **`generate-resume`** | jobId → `resume.json` + `resume.md` (variant-aware) | yes |
-| **`generate-cover-letter`** | jobId → `cover_letter.json` + `cover_letter.md` (3 paragraphs, < 250 words) | yes |
-| **`generate-company-brief`** | jobId, optional company URL → `company_brief.md` (web-distill grounded if URL given) | yes |
+| **`generate-resume`** | jobId → `<slug>-resume.json` + `<slug>-resume.md` (variant-aware) | yes |
+| **`generate-cover-letter`** | jobId → `<slug>-cover_letter.json` + `<slug>-cover_letter.md` (3 paragraphs, < 250 words) | yes |
+| **`generate-company-brief`** | jobId, optional company URL → `<slug>-company_brief.md` (web-distill grounded if URL given) | yes |
 
 ### Rendering
 
 | Tool | Contract | LLM? |
 |---|---|---|
-| **`render-resume-pdf`** | jobId → `resume.pdf` (Playwright HTML→PDF) | no |
-| **`render-cover-letter-pdf`** | jobId → `cover_letter.pdf` | no |
-| **`render-company-brief-pdf`** | jobId → `company_brief.pdf` | no |
+| **`render-resume-pdf`** | jobId → `<slug>-resume.pdf` (Playwright HTML→PDF) | no |
+| **`render-cover-letter-pdf`** | jobId → `<slug>-cover_letter.pdf` | no |
+| **`render-company-brief-pdf`** | jobId → `<slug>-company_brief.pdf` | no |
 
 ### Delivery
 
@@ -137,9 +139,9 @@ career-ops evaluate-job https://www.seek.com.au/job/12345678
 # Generate the full bundle
 career-ops apply-job 12345678
 #   → output/acme-pty-ltd-senior-backend-engineer/
-#       ├── resume.pdf
-#       ├── cover_letter.pdf
-#       └── company_brief.md
+#       ├── acme-pty-ltd-senior-backend-engineer-resume.pdf
+#       ├── acme-pty-ltd-senior-backend-engineer-cover_letter.pdf
+#       └── acme-pty-ltd-senior-backend-engineer-company_brief.md
 
 # Daily morning brief (with auto-apply for STRONG matches)
 career-ops daily-pipeline --auto-apply-top 3

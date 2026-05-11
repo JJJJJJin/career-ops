@@ -110,9 +110,10 @@ export async function generateCompanyBrief(jobId: string, opts: GenerateCompanyB
   if (!job) throw new Error(`generate-company-brief: ${jobId} not in DB. Run seek-extract first.`);
   const summary: JobSummary = await summarizeJob(jobId);
 
-  const outputDir = path.join(config.paths.applicationsDir, applicationSlug(job.company, job.title));
-  const mdPath = path.join(outputDir, 'company_brief.md');
-  const jsonPath = path.join(outputDir, 'company_brief.json');
+  const slug = applicationSlug(job.company, job.title);
+  const outputDir = path.join(config.paths.applicationsDir, slug);
+  const mdPath = path.join(outputDir, `${slug}-company_brief.md`);
+  const jsonPath = path.join(outputDir, `${slug}-company_brief.json`);
 
   if (!opts.force && fs.existsSync(jsonPath) && fs.existsSync(mdPath)) {
     const cached = JSON.parse(fs.readFileSync(jsonPath, 'utf-8')) as CompanyBrief;

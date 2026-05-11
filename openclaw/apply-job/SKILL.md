@@ -30,10 +30,11 @@ career-ops apply-job <jobIdOrUrl> [--force] [--reextract] [--skip-brief] [--skip
 - `--email` / `--no-email` — force email delivery on/off (default: on when `.env` is configured).
 - `--email-to <addr>` — override the recipient (default: `$EMAIL_TO`).
 
-## Outputs (per-job folder under output/<company-slug>-<role-slug>/)
-- `resume.json` + `resume.md` + `resume.pdf`
-- `cover_letter.json` + `cover_letter.md` + `cover_letter.pdf`
-- `company_brief.json` + `company_brief.md` + `company_brief.pdf`
+## Outputs (per-job folder under output/<slug>/ where slug = `<company-slug>-<role-slug>`)
+All artefact files are prefixed with the slug so they stay self-describing when copied out of the folder.
+- `<slug>-resume.json` + `<slug>-resume.md` + `<slug>-resume.pdf`
+- `<slug>-cover_letter.json` + `<slug>-cover_letter.md` + `<slug>-cover_letter.pdf`
+- `<slug>-company_brief.json` + `<slug>-company_brief.md` + `<slug>-company_brief.pdf`
 - DB: full population of `applications` row.
 - File: `data/applications.md` regenerated.
 - Email: when configured, all three PDFs are sent to `$EMAIL_TO` as attachments.

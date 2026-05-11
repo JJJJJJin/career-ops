@@ -22,8 +22,9 @@ career-ops generate-cover-letter <jobId> [--force]
 - `--force` — regenerate even if cached.
 
 ## Outputs
-- File: `output/<slug>/cover_letter.json` (TailoredCoverLetter).
-- File: `output/<slug>/cover_letter.md` (markdown view).
+(`<slug>` = `<company-slug>-<role-slug>`; artefact filenames are prefixed with it.)
+- File: `output/<slug>/<slug>-cover_letter.json` (TailoredCoverLetter).
+- File: `output/<slug>/<slug>-cover_letter.md` (markdown view).
 - DB: `applications.cover_letter_md`, `output_dir`, `generated_at`, `model`.
 
 ## Format constraints (enforced via system prompt)

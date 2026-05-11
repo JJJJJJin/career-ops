@@ -21,11 +21,12 @@ career-ops generate-resume <jobId> [--force]
 
 ## Inputs
 - `<jobId>` (required) — job must be in DB. Auto-summarizes / matches / distills profile if needed.
-- `--force` — regenerate even if `output/<slug>/resume.json` already exists.
+- `--force` — regenerate even if `output/<slug>/<slug>-resume.json` already exists.
 
 ## Outputs
-- File: `output/<company-slug>-<role-slug>/resume.json` (structured TailoredResume).
-- File: `output/<company-slug>-<role-slug>/resume.md` (deterministic markdown view of the JSON).
+(`<slug>` = `<company-slug>-<role-slug>`; artefact filenames are prefixed with it.)
+- File: `output/<slug>/<slug>-resume.json` (structured TailoredResume).
+- File: `output/<slug>/<slug>-resume.md` (deterministic markdown view of the JSON).
 - DB: `applications.resume_md`, `output_dir`, `generated_at`, `model`, `profile_hash`.
 
 ## Chaining

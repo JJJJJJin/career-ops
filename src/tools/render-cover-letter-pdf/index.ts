@@ -39,8 +39,9 @@ export async function renderCoverLetterPdf(jobId: string, opts: RenderCoverLette
   const job = db.getJob(jobId);
   if (!job) throw new Error(`render-cover-letter-pdf: ${jobId} not in DB.`);
 
-  const outputDir = path.join(config.paths.applicationsDir, applicationSlug(job.company, job.title));
-  const jsonPath = path.join(outputDir, 'cover_letter.json');
+  const slug = applicationSlug(job.company, job.title);
+  const outputDir = path.join(config.paths.applicationsDir, slug);
+  const jsonPath = path.join(outputDir, `${slug}-cover_letter.json`);
   if (!fs.existsSync(jsonPath)) {
     throw new Error(
       `render-cover-letter-pdf: ${jsonPath} not found. Run \`career-ops generate-cover-letter ${jobId}\` first.`,
@@ -60,7 +61,7 @@ export async function renderCoverLetterPdf(jobId: string, opts: RenderCoverLette
     CLOSING: escapeHtml(letter.closing),
   });
 
-  const outPath = opts.outPath ?? path.join(outputDir, 'cover_letter.pdf');
+  const outPath = opts.outPath ?? path.join(outputDir, `${slug}-cover_letter.pdf`);
   await renderHtmlToPdf(html, { outPath });
 
   log.info({ jobId, outPath }, 'render-cover-letter-pdf: complete');

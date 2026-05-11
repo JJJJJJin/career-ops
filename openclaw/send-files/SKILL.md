@@ -48,7 +48,7 @@ career-ops send-files --job <jobId> [--ext .pdf,.docx] [--webhook <url>] [--text
 - `apply-job 12345 --no-send` — generate but don't notify.
 - `send-files --job 12345` — manually push that job's PDFs.
 - `send-files /tmp/screenshot.png --text "look at this"` — ad-hoc share.
-- `send-files output/acme-engineer/resume.pdf output/acme-engineer/cover_letter.pdf` — explicit list.
+- `send-files output/acme-engineer/acme-engineer-resume.pdf output/acme-engineer/acme-engineer-cover_letter.pdf` — explicit list (artefacts are prefixed with the folder slug).
 
 ## Adding a new provider
 1. Implement `NotifyProvider` in `src/shared/notify/<provider>.ts`.

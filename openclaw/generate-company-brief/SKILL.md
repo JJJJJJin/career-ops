@@ -23,8 +23,9 @@ career-ops generate-company-brief <jobId> [--company-website <url>] [--force]
 - `--force` — regenerate even if cached.
 
 ## Outputs
-- File: `output/<slug>/company_brief.md` (with sections: One-liner, What they do, Products/services, Industry & market, Culture & values, This role in context, Things to verify).
-- File: `output/<slug>/company_brief.json` (structured form).
+(`<slug>` = `<company-slug>-<role-slug>`; artefact filenames are prefixed with it.)
+- File: `output/<slug>/<slug>-company_brief.md` (with sections: One-liner, What they do, Products/services, Industry & market, Culture & values, This role in context, Things to verify).
+- File: `output/<slug>/<slug>-company_brief.json` (structured form).
 - DB: `applications.company_brief_md`.
 
 ## Honesty contract

@@ -165,8 +165,9 @@ export async function renderResumePdf(jobId: string, opts: RenderResumePdfOption
   const job = db.getJob(jobId);
   if (!job) throw new Error(`render-resume-pdf: ${jobId} not in DB.`);
 
-  const outputDir = path.join(config.paths.applicationsDir, applicationSlug(job.company, job.title));
-  const jsonPath = path.join(outputDir, 'resume.json');
+  const slug = applicationSlug(job.company, job.title);
+  const outputDir = path.join(config.paths.applicationsDir, slug);
+  const jsonPath = path.join(outputDir, `${slug}-resume.json`);
   if (!fs.existsSync(jsonPath)) {
     throw new Error(`render-resume-pdf: ${jsonPath} not found. Run \`career-ops generate-resume ${jobId}\` first.`);
   }
@@ -185,7 +186,7 @@ export async function renderResumePdf(jobId: string, opts: RenderResumePdfOption
     SKILLS_BLOCK: buildSkills(resume),
   });
 
-  const outPath = opts.outPath ?? path.join(outputDir, 'resume.pdf');
+  const outPath = opts.outPath ?? path.join(outputDir, `${slug}-resume.pdf`);
   await renderHtmlToPdf(html, { outPath });
 
   log.info({ jobId, outPath }, 'render-resume-pdf: complete');

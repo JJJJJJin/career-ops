@@ -42,9 +42,9 @@ To install into a different skills directory:
 - **[generate-company-brief](generate-company-brief/SKILL.md)** — company + role context, optional web grounding
 
 ### Rendering
-- **[render-resume-pdf](render-resume-pdf/SKILL.md)** — resume.json → resume.pdf
-- **[render-cover-letter-pdf](render-cover-letter-pdf/SKILL.md)** — cover_letter.json → cover_letter.pdf
-- **[render-company-brief-pdf](render-company-brief-pdf/SKILL.md)** — company_brief.json → company_brief.pdf
+- **[render-resume-pdf](render-resume-pdf/SKILL.md)** — `<slug>-resume.json` → `<slug>-resume.pdf`
+- **[render-cover-letter-pdf](render-cover-letter-pdf/SKILL.md)** — `<slug>-cover_letter.json` → `<slug>-cover_letter.pdf`
+- **[render-company-brief-pdf](render-company-brief-pdf/SKILL.md)** — `<slug>-company_brief.json` → `<slug>-company_brief.pdf`
 
 ### Delivery
 - **[send-files](send-files/SKILL.md)** — push one or more local files to a group chat via webhook (WeChat Work today; pluggable)

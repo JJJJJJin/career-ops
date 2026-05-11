@@ -107,9 +107,10 @@ export async function generateCoverLetter(jobId: string, opts: GenerateCoverLett
   const match: MatchAnalysis = await matchJob(jobId, { summary });
   const { profile, markdown: profileMd } = await ensureProfile();
 
-  const outputDir = path.join(config.paths.applicationsDir, applicationSlug(job.company, job.title));
-  const jsonPath = path.join(outputDir, 'cover_letter.json');
-  const mdPath = path.join(outputDir, 'cover_letter.md');
+  const slug = applicationSlug(job.company, job.title);
+  const outputDir = path.join(config.paths.applicationsDir, slug);
+  const jsonPath = path.join(outputDir, `${slug}-cover_letter.json`);
+  const mdPath = path.join(outputDir, `${slug}-cover_letter.md`);
 
   if (!opts.force && fs.existsSync(jsonPath) && fs.existsSync(mdPath)) {
     const cached = JSON.parse(fs.readFileSync(jsonPath, 'utf-8')) as TailoredCoverLetter;

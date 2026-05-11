@@ -180,9 +180,10 @@ export async function generateResume(jobId: string, opts: GenerateResumeOptions 
   const match: MatchAnalysis = await matchJob(jobId, { summary });
   const { profile, markdown: profileMd } = await ensureProfile();
 
-  const outputDir = path.join(config.paths.applicationsDir, applicationSlug(job.company, job.title));
-  const resumeJsonPath = path.join(outputDir, 'resume.json');
-  const resumeMdPath = path.join(outputDir, 'resume.md');
+  const slug = applicationSlug(job.company, job.title);
+  const outputDir = path.join(config.paths.applicationsDir, slug);
+  const resumeJsonPath = path.join(outputDir, `${slug}-resume.json`);
+  const resumeMdPath = path.join(outputDir, `${slug}-resume.md`);
 
   if (!opts.force && fs.existsSync(resumeJsonPath) && fs.existsSync(resumeMdPath)) {
     const cached = JSON.parse(fs.readFileSync(resumeJsonPath, 'utf-8')) as TailoredResume;

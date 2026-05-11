@@ -57,8 +57,9 @@ export async function renderCompanyBriefPdf(jobId: string, opts: RenderCompanyBr
   const job = db.getJob(jobId);
   if (!job) throw new Error(`render-company-brief-pdf: ${jobId} not in DB.`);
 
-  const outputDir = path.join(config.paths.applicationsDir, applicationSlug(job.company, job.title));
-  const jsonPath = path.join(outputDir, 'company_brief.json');
+  const slug = applicationSlug(job.company, job.title);
+  const outputDir = path.join(config.paths.applicationsDir, slug);
+  const jsonPath = path.join(outputDir, `${slug}-company_brief.json`);
   if (!fs.existsSync(jsonPath)) {
     throw new Error(
       `render-company-brief-pdf: ${jsonPath} not found. Run \`career-ops generate-company-brief ${jobId}\` first.`,
@@ -79,7 +80,7 @@ export async function renderCompanyBriefPdf(jobId: string, opts: RenderCompanyBr
     VERIFY_BLOCK: listBlock('Things to verify', brief.thingsToVerify, 'verify'),
   });
 
-  const outPath = opts.outPath ?? path.join(outputDir, 'company_brief.pdf');
+  const outPath = opts.outPath ?? path.join(outputDir, `${slug}-company_brief.pdf`);
   await renderHtmlToPdf(html, { outPath });
 
   log.info({ jobId, outPath }, 'render-company-brief-pdf: complete');
