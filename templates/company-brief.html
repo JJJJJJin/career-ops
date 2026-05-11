@@ -10,14 +10,14 @@
     src: url('../fonts/space-grotesk-latin.woff2') format('woff2');
     font-weight: 300 700;
     font-style: normal;
-    font-display: swap;
+    font-display: block;
   }
   @font-face {
     font-family: 'DM Sans';
     src: url('../fonts/dm-sans-latin.woff2') format('woff2');
     font-weight: 100 1000;
     font-style: normal;
-    font-display: swap;
+    font-display: block;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -29,6 +29,13 @@
     line-height: 1.65;
     color: #1a1a2e;
     background: #ffffff;
+    /* Pin DM Sans optical-size and weight axes explicitly — without this
+       Pi-era Chromium leaves opsz at its 9pt default and bodies render
+       with wide caption-master spacing. */
+    font-optical-sizing: none;
+    font-variation-settings: "opsz" 14, "wght" 400;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
   }
 
   .page {

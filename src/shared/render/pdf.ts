@@ -38,6 +38,10 @@ export async function renderHtmlToPdf(html: string, opts: PdfOptions): Promise<s
     await withBrowser(async ({ page }) => {
       await page.goto('file://' + tmpPath, { waitUntil: 'networkidle' });
       await page.emulateMedia({ media: 'print' });
+      // Wait for webfonts to finish parsing before snapshotting. On slow
+      // hosts (Pi SD card I/O) the variable woff2 isn't ready when
+      // networkidle fires, so Chromium captures the fallback font.
+      await page.evaluate(() => document.fonts.ready);
       await page.pdf({
         path: opts.outPath,
         format: opts.format ?? 'A4',
