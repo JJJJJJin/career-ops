@@ -1,9 +1,9 @@
 // show-job — full record + application state for one jobId.
 import { db } from '../../shared/db/store.js';
-import type { ApplicationRow, SeekJob } from '../../shared/db/types.js';
+import type { ApplicationRow, Job } from '../../shared/db/types.js';
 
 export type ShowResult = {
-  job: SeekJob;
+  job: Job;
   application: ApplicationRow | null;
 };
 

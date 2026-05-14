@@ -1,6 +1,6 @@
 // query-jobs — read DB with composable filters.
 import { db } from '../../shared/db/store.js';
-import type { ApplicationRow, ApplicationStatus, SeekJob } from '../../shared/db/types.js';
+import type { ApplicationRow, ApplicationStatus, Job } from '../../shared/db/types.js';
 
 export type QueryFilters = {
   sinceDays?: number;
@@ -13,7 +13,7 @@ export type QueryFilters = {
   limit?: number;
 };
 
-export type QueryResult = { job: SeekJob; application: ApplicationRow | null };
+export type QueryResult = { job: Job; application: ApplicationRow | null };
 
 export function queryJobs(filters: QueryFilters = {}): QueryResult[] {
   return db.listJobs(filters);

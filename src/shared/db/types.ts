@@ -11,8 +11,12 @@ export type EligibilityFlag = {
   evidence: string;
 };
 
-export type SeekJob = {
+/** Platform a job posting came from. Defaults to 'seek' for legacy rows. */
+export type JobSourceName = 'seek' | 'linkedin';
+
+export type Job = {
   jobId: string;
+  source: JobSourceName;
   url: string;
   title: string;
   company: string | null;
@@ -24,6 +28,18 @@ export type SeekJob = {
   postedDate: string | null;
   fetchedAt: string;
   eligibilityFlags: EligibilityFlag[];
+};
+
+/** Thin stub returned by a JobSource.search() call before the full extract. */
+export type JobSearchStub = {
+  jobId: string;
+  source: JobSourceName;
+  url: string;
+  title: string;
+  company: string | null;
+  location: string | null;
+  matchedKeyword: string;
+  isNew: boolean;
 };
 
 export type JobSummary = {
@@ -82,6 +98,7 @@ export type ApplicationRow = {
 export type ScanRunRow = {
   id: number;
   ranAt: string;
+  source: JobSourceName;
   keyword: string;
   location: string | null;
   days: number | null;

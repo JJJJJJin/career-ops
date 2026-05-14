@@ -13,7 +13,7 @@ import { config } from '../../shared/config.js';
 import { db } from '../../shared/db/store.js';
 import { applicationSlug } from '../../shared/slug.js';
 import { createLogger } from '../../shared/logger.js';
-import type { JobSummary, MatchAnalysis, SeekJob } from '../../shared/db/types.js';
+import type { JobSummary, MatchAnalysis, Job } from '../../shared/db/types.js';
 import { ensureProfile } from '../distill-profile/index.js';
 import { summarizeJob } from '../summarize-job/index.js';
 import { matchJob } from '../match-job/index.js';
@@ -173,7 +173,7 @@ export type GenerateResumeOptions = {
 };
 
 export async function generateResume(jobId: string, opts: GenerateResumeOptions = {}): Promise<GenerateResumeResult> {
-  const job: SeekJob | null = db.getJob(jobId);
+  const job: Job | null = db.getJob(jobId);
   if (!job) throw new Error(`generate-resume: ${jobId} not in DB. Run seek-extract first.`);
 
   const summary: JobSummary = await summarizeJob(jobId);

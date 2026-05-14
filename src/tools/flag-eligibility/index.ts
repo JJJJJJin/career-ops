@@ -6,7 +6,7 @@
 // same conservative bias.
 import { db } from '../../shared/db/store.js';
 import { createLogger } from '../../shared/logger.js';
-import type { EligibilityFlag, SeekJob } from '../../shared/db/types.js';
+import type { EligibilityFlag, Job } from '../../shared/db/types.js';
 
 const log = createLogger('flag-eligibility');
 
@@ -128,7 +128,7 @@ export function flagEligibility(opts: FlagOptions): FlagResult {
   if (!opts.jobId) {
     throw new Error('flag-eligibility: pass either { jobId } or { text }');
   }
-  const job: SeekJob | null = db.getJob(opts.jobId);
+  const job: Job | null = db.getJob(opts.jobId);
   if (!job) throw new Error(`flag-eligibility: job ${opts.jobId} not in DB. Run seek-extract first.`);
   const flags = scanEligibility(job.description);
   if (!opts.noStore) {

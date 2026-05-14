@@ -4,21 +4,23 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { config } from '../config.js';
 import { createLogger } from '../logger.js';
-import { SCHEMA_SQL } from './schema.js';
+import { SCHEMA_TABLES_SQL, SCHEMA_INDEXES_SQL, MIGRATIONS } from './schema.js';
 import type {
   ApplicationRow,
   ApplicationStatus,
   EligibilityFlag,
+  Job,
+  JobSourceName,
   JobSummary,
   MatchAnalysis,
   ScanRunRow,
-  SeekJob,
 } from './types.js';
 
 const log = createLogger('db');
 
 type JobRow = {
   job_id: string;
+  source: string;
   url: string;
   title: string;
   company: string | null;
@@ -52,9 +54,10 @@ type AppRow = {
   updated_at: string;
 };
 
-function rowToJob(row: JobRow): SeekJob {
+function rowToJob(row: JobRow): Job {
   return {
     jobId: row.job_id,
+    source: (row.source as JobSourceName) ?? 'seek',
     url: row.url,
     title: row.title,
     company: row.company,
@@ -106,7 +109,19 @@ class DbStore {
   }
 
   private applySchema(db: Database.Database): void {
-    db.exec(SCHEMA_SQL);
+    // 1. Tables first (CREATE TABLE IF NOT EXISTS — no-op on existing DBs).
+    db.exec(SCHEMA_TABLES_SQL);
+    // 2. ALTER TABLE migrations to add columns that may not exist on
+    //    pre-existing DBs. Must run BEFORE indexes that target those columns.
+    for (const m of MIGRATIONS) {
+      const cols = db.prepare(`PRAGMA table_info(${m.table})`).all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === m.column)) {
+        log.info({ table: m.table, column: m.column }, 'db: applying migration');
+        db.exec(m.ddl);
+      }
+    }
+    // 3. Indexes last — `source` column is guaranteed to exist by now.
+    db.exec(SCHEMA_INDEXES_SQL);
   }
 
   init(): void {
@@ -121,13 +136,14 @@ class DbStore {
   }
 
   // ─── jobs ────────────────────────────────────────────────────────────
-  upsertJob(job: SeekJob): void {
+  upsertJob(job: Job): void {
     const stmt = this.db.prepare(`
-      INSERT INTO jobs (job_id, url, title, company, location, work_type, classification,
+      INSERT INTO jobs (job_id, source, url, title, company, location, work_type, classification,
                         description, salary_text, posted_date, fetched_at, eligibility_flags)
-      VALUES (@job_id, @url, @title, @company, @location, @work_type, @classification,
+      VALUES (@job_id, @source, @url, @title, @company, @location, @work_type, @classification,
               @description, @salary_text, @posted_date, @fetched_at, @eligibility_flags)
       ON CONFLICT(job_id) DO UPDATE SET
+        source = excluded.source,
         url = excluded.url,
         title = excluded.title,
         company = excluded.company,
@@ -142,6 +158,7 @@ class DbStore {
     `);
     stmt.run({
       job_id: job.jobId,
+      source: job.source,
       url: job.url,
       title: job.title,
       company: job.company,
@@ -157,14 +174,21 @@ class DbStore {
   }
 
   /** Insert a thin job stub from a search result. Will not overwrite an existing row. */
-  upsertJobStub(stub: { jobId: string; url: string; title: string; company: string | null }): boolean {
+  upsertJobStub(stub: {
+    jobId: string;
+    source: JobSourceName;
+    url: string;
+    title: string;
+    company: string | null;
+  }): boolean {
     const stmt = this.db.prepare(`
-      INSERT INTO jobs (job_id, url, title, company, description, fetched_at)
-      VALUES (@job_id, @url, @title, @company, '', @fetched_at)
+      INSERT INTO jobs (job_id, source, url, title, company, description, fetched_at)
+      VALUES (@job_id, @source, @url, @title, @company, '', @fetched_at)
       ON CONFLICT(job_id) DO NOTHING
     `);
     const result = stmt.run({
       job_id: stub.jobId,
+      source: stub.source,
       url: stub.url,
       title: stub.title,
       company: stub.company,
@@ -173,12 +197,12 @@ class DbStore {
     return result.changes > 0;
   }
 
-  getJob(jobId: string): SeekJob | null {
+  getJob(jobId: string): Job | null {
     const row = this.db.prepare(`SELECT * FROM jobs WHERE job_id = ?`).get(jobId) as JobRow | undefined;
     return row ? rowToJob(row) : null;
   }
 
-  findJobByUrl(url: string): SeekJob | null {
+  findJobByUrl(url: string): Job | null {
     const row = this.db.prepare(`SELECT * FROM jobs WHERE url = ?`).get(url) as JobRow | undefined;
     return row ? rowToJob(row) : null;
   }
@@ -267,10 +291,11 @@ class DbStore {
     ineligibleOnly?: boolean;
     keyword?: string;
     company?: string;
+    source?: JobSourceName;
     minScore?: number;
     status?: ApplicationStatus;
     limit?: number;
-  } = {}): Array<{ job: SeekJob; application: ApplicationRow | null }> {
+  } = {}): Array<{ job: Job; application: ApplicationRow | null }> {
     const where: string[] = [];
     const params: Record<string, unknown> = {};
 
@@ -291,6 +316,10 @@ class DbStore {
     if (opts.company) {
       params.co = `%${opts.company.toLowerCase()}%`;
       where.push(`LOWER(j.company) LIKE @co`);
+    }
+    if (opts.source) {
+      params.source = opts.source;
+      where.push(`j.source = @source`);
     }
     if (opts.minScore !== undefined) {
       params.minScore = opts.minScore;
@@ -325,11 +354,12 @@ class DbStore {
   recordScanRun(run: Omit<ScanRunRow, 'id'>): void {
     this.db
       .prepare(`
-        INSERT INTO scan_runs (ran_at, keyword, location, days, jobs_found, jobs_new)
-        VALUES (@ran_at, @keyword, @location, @days, @jobs_found, @jobs_new)
+        INSERT INTO scan_runs (ran_at, source, keyword, location, days, jobs_found, jobs_new)
+        VALUES (@ran_at, @source, @keyword, @location, @days, @jobs_found, @jobs_new)
       `)
       .run({
         ran_at: run.ranAt,
+        source: run.source,
         keyword: run.keyword,
         location: run.location,
         days: run.days,
@@ -345,6 +375,7 @@ class DbStore {
     ineligibleJobs: number;
     byStatus: Record<string, number>;
     byRecommendation: Record<string, number>;
+    bySource: Record<string, number>;
     scoreBuckets: { strong: number; borderline: number; skip: number; unscored: number };
   } {
     const totalJobs = (this.db.prepare(`SELECT COUNT(*) AS n FROM jobs`).get() as { n: number }).n;
@@ -367,6 +398,12 @@ class DbStore {
     const byRecommendation: Record<string, number> = {};
     for (const r of recRows) byRecommendation[r.recommendation] = r.n;
 
+    const sourceRows = this.db
+      .prepare(`SELECT source, COUNT(*) AS n FROM jobs GROUP BY source`)
+      .all() as Array<{ source: string; n: number }>;
+    const bySource: Record<string, number> = {};
+    for (const r of sourceRows) bySource[r.source] = r.n;
+
     const strong = (this.db.prepare(`SELECT COUNT(*) AS n FROM applications WHERE recommendation = 'STRONG'`).get() as { n: number }).n;
     const borderline = (this.db.prepare(`SELECT COUNT(*) AS n FROM applications WHERE recommendation = 'BORDERLINE'`).get() as { n: number }).n;
     const skip = (this.db.prepare(`SELECT COUNT(*) AS n FROM applications WHERE recommendation IN ('SKIP', 'NOT_FOR_YOU')`).get() as { n: number }).n;
@@ -378,6 +415,7 @@ class DbStore {
       ineligibleJobs,
       byStatus,
       byRecommendation,
+      bySource,
       scoreBuckets: { strong, borderline, skip, unscored },
     };
   }

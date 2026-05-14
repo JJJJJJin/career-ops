@@ -9,7 +9,7 @@ import { config } from '../../shared/config.js';
 import { db } from '../../shared/db/store.js';
 import { applicationSlug } from '../../shared/slug.js';
 import { createLogger } from '../../shared/logger.js';
-import type { JobSummary, SeekJob } from '../../shared/db/types.js';
+import type { JobSummary, Job } from '../../shared/db/types.js';
 import { summarizeJob } from '../summarize-job/index.js';
 import { webDistill } from '../web-distill/index.js';
 
@@ -41,7 +41,7 @@ type CompanyBrief = {
   thingsToVerify: string[];
 };
 
-function renderMarkdown(b: CompanyBrief, job: SeekJob): string {
+function renderMarkdown(b: CompanyBrief, job: Job): string {
   const lines: string[] = [];
   lines.push(`# ${job.company ?? 'Company brief'} — ${job.title}`);
   lines.push('');
@@ -106,7 +106,7 @@ export type GenerateCompanyBriefOptions = {
 };
 
 export async function generateCompanyBrief(jobId: string, opts: GenerateCompanyBriefOptions = {}): Promise<GenerateCompanyBriefResult> {
-  const job: SeekJob | null = db.getJob(jobId);
+  const job: Job | null = db.getJob(jobId);
   if (!job) throw new Error(`generate-company-brief: ${jobId} not in DB. Run seek-extract first.`);
   const summary: JobSummary = await summarizeJob(jobId);
 

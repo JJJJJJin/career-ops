@@ -8,6 +8,7 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS jobs (
   job_id            TEXT PRIMARY KEY,
+  source            TEXT NOT NULL DEFAULT 'seek',  -- 'seek' | 'linkedin' | …
   url               TEXT NOT NULL,
   title             TEXT NOT NULL,
   company           TEXT,
@@ -23,6 +24,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 
 CREATE INDEX IF NOT EXISTS idx_jobs_company ON jobs(company);
 CREATE INDEX IF NOT EXISTS idx_jobs_fetched ON jobs(fetched_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source);
 
 CREATE TABLE IF NOT EXISTS applications (
   job_id            TEXT PRIMARY KEY REFERENCES jobs(job_id) ON DELETE CASCADE,
@@ -51,6 +53,7 @@ CREATE INDEX IF NOT EXISTS idx_applications_score ON applications(score_out_of_5
 CREATE TABLE IF NOT EXISTS scan_runs (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   ran_at      TEXT NOT NULL,
+  source      TEXT NOT NULL DEFAULT 'seek',
   keyword     TEXT NOT NULL,
   location    TEXT,
   days        INTEGER,

@@ -151,6 +151,7 @@ async function searchOneKeyword(
       if (!noStore) {
         isNew = db.upsertJobStub({
           jobId,
+          source: 'seek',
           url: cleanUrl,
           title: c.title,
           company: c.company,
@@ -218,6 +219,7 @@ export async function seekSearch(opts: SearchOptions = {}): Promise<SearchResult
       if (!noStore) {
         db.recordScanRun({
           ranAt,
+          source: 'seek',
           keyword: kw,
           location,
           days,

@@ -1,10 +1,14 @@
-// seek-extract — fetch a single SEEK job posting and persist it.
+// linkedin-extract — fetch a single LinkedIn job posting and persist it.
 //
-// Strategy:
-// 1. Navigate the URL, wait for JSON-LD or jobAdDetails block
-// 2. Read JSON-LD JobPosting + __NEXT_DATA__ (richer fields like classification)
-// 3. Fall back to the visible jobAdDetails text if JSON-LD description is thin
-// 4. Final LLM fallback only if everything above failed
+// LinkedIn exposes a public, login-free view at
+//   https://www.linkedin.com/jobs/view/<id>
+// which carries a JSON-LD JobPosting block with title, description, company,
+// location, salary, datePosted, etc. We also try the lighter guest endpoint
+//   https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/<id>
+// which returns an HTML fragment when the main URL hits a wall.
+//
+// jobIds are namespaced `linkedin:<numeric>` to avoid collision with SEEK
+// (which uses bare numeric IDs).
 import type { Page } from 'playwright';
 import { callJson } from '../../shared/llm/client.js';
 import { createLogger } from '../../shared/logger.js';
@@ -12,20 +16,28 @@ import { withBrowser } from '../../shared/browser/session.js';
 import { db } from '../../shared/db/store.js';
 import type { Job } from '../../shared/db/types.js';
 
-const log = createLogger('seek-extract');
+const log = createLogger('linkedin-extract');
 
 export type ExtractOptions = {
-  /** Skip the LLM fallback even if the description is thin. */
   noLlm?: boolean;
-  /** Skip writing to SQLite. */
   noStore?: boolean;
-  /** Force-refetch even if already cached. */
   reextract?: boolean;
 };
 
-export function extractJobIdFromUrl(url: string): string {
-  const m = url.match(/\/job\/(\d+)/);
-  return m && m[1] ? m[1] : url;
+export const LINKEDIN_JOB_ID_PREFIX = 'linkedin:';
+
+export function extractLinkedInJobIdFromUrl(url: string): string {
+  // Forms seen in the wild:
+  //   /jobs/view/3927464923
+  //   /jobs/view/some-role-at-acme-3927464923
+  //   ?currentJobId=3927464923
+  const direct = url.match(/\/jobs\/view\/(?:[^/]*-)?(\d{6,})/);
+  if (direct && direct[1]) return `${LINKEDIN_JOB_ID_PREFIX}${direct[1]}`;
+  const param = url.match(/[?&]currentJobId=(\d{6,})/);
+  if (param && param[1]) return `${LINKEDIN_JOB_ID_PREFIX}${param[1]}`;
+  const tail = url.match(/(\d{8,})/);
+  if (tail && tail[1]) return `${LINKEDIN_JOB_ID_PREFIX}${tail[1]}`;
+  return `${LINKEDIN_JOB_ID_PREFIX}${url}`;
 }
 
 function htmlToText(html: string): string {
@@ -51,8 +63,8 @@ type JsonLdJobPosting = {
   title?: string;
   description?: string;
   datePosted?: string;
-  validThrough?: string;
   employmentType?: string | string[];
+  industry?: string | string[];
   baseSalary?: {
     currency?: string;
     value?: { minValue?: number; maxValue?: number; unitText?: string; value?: number };
@@ -67,9 +79,7 @@ type JsonLdJobPosting = {
 
 type PageData = {
   jsonLdRaw: string[];
-  nextData: string | null;
   visibleText: string;
-  fullText: string;
   title: string;
 };
 
@@ -78,20 +88,19 @@ async function readPageData(page: Page): Promise<PageData> {
     const jsonLdNodes = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
     const jsonLdRaw = jsonLdNodes.map((n) => n.textContent ?? '').filter(Boolean);
 
-    const nextEl = document.getElementById('__NEXT_DATA__');
-    const nextData = nextEl?.textContent ?? null;
-
-    const titleEl = document.querySelector('h1');
+    const titleEl =
+      document.querySelector('.top-card-layout__title') ??
+      document.querySelector('h1');
     const title = titleEl?.textContent?.trim() ?? document.title ?? '';
 
-    const main =
-      document.querySelector('[data-automation="jobAdDetails"]') ??
+    const desc =
+      document.querySelector('.show-more-less-html__markup') ??
+      document.querySelector('.description__text') ??
       document.querySelector('main') ??
       document.body;
-    const visibleText = (main as HTMLElement).innerText?.slice(0, 12000) ?? '';
-    const fullText = document.body.innerText?.slice(0, 12000) ?? '';
+    const visibleText = (desc as HTMLElement).innerText?.slice(0, 14000) ?? '';
 
-    return { jsonLdRaw, nextData, visibleText, fullText, title };
+    return { jsonLdRaw, visibleText, title };
   });
 }
 
@@ -116,7 +125,7 @@ function findJobPosting(jsonLdRaw: string[]): JsonLdJobPosting | null {
         }
       }
     } catch {
-      // Skip malformed JSON-LD.
+      // skip malformed
     }
   }
   return null;
@@ -143,23 +152,10 @@ function workTypeFromJsonLd(jp: JsonLdJobPosting): string | null {
   return Array.isArray(et) ? et.join(', ') : et;
 }
 
-/** Extract company name from visible page text, right after the job title. */
-function companyFromVisibleText(visibleText: string, title: string): string | null {
-  const lines = visibleText.split('\n').map((l) => l.trim()).filter(Boolean);
-  const titleIndex = lines.findIndex((l) => l === title);
-  if (titleIndex >= 0 && titleIndex + 1 < lines.length) {
-    const candidate = lines[titleIndex + 1];
-    // Skip lines that are obviously not company names (short, starts with digit, known nav items)
-    if (
-      candidate &&
-      candidate.length > 2 &&
-      !/^\d/.test(candidate) &&
-      !/^(skip|sign|back|view|apply|save|share)/i.test(candidate)
-    ) {
-      return candidate;
-    }
-  }
-  return null;
+function classificationFromJsonLd(jp: JsonLdJobPosting): string | null {
+  const ind = jp.industry;
+  if (!ind) return null;
+  return Array.isArray(ind) ? ind.join(', ') : ind;
 }
 
 function salaryFromJsonLd(jp: JsonLdJobPosting): string | null {
@@ -176,62 +172,6 @@ function salaryFromJsonLd(jp: JsonLdJobPosting): string | null {
   return null;
 }
 
-type NextJobFields = {
-  classification: string | null;
-  workType: string | null;
-  location: string | null;
-  company: string | null;
-};
-
-function findNextJobFields(nextData: string | null): NextJobFields {
-  const empty: NextJobFields = { classification: null, workType: null, location: null, company: null };
-  if (!nextData) return empty;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(nextData);
-  } catch {
-    return empty;
-  }
-
-  let found: Record<string, unknown> | null = null;
-  const visit = (node: unknown, depth: number): void => {
-    if (found || depth > 8 || !node || typeof node !== 'object') return;
-    const obj = node as Record<string, unknown>;
-    const looksJobby =
-      ('classification' in obj || 'subClassification' in obj || 'workType' in obj) &&
-      ('title' in obj || 'advertiser' in obj || 'companyName' in obj);
-    if (looksJobby) {
-      found = obj;
-      return;
-    }
-    for (const v of Object.values(obj)) {
-      if (v && typeof v === 'object') visit(v, depth + 1);
-    }
-  };
-  visit(parsed, 0);
-
-  if (!found) return empty;
-  const f = found as Record<string, unknown>;
-  const pickName = (v: unknown): string | null => {
-    if (!v) return null;
-    if (typeof v === 'string') return v;
-    if (typeof v === 'object') {
-      const o = v as Record<string, unknown>;
-      const name = o.description ?? o.name ?? o.label;
-      if (typeof name === 'string') return name;
-    }
-    return null;
-  };
-
-  const adv = f.advertiser as Record<string, unknown> | undefined;
-  return {
-    classification: pickName(f.classification),
-    workType: typeof f.workType === 'string' ? f.workType : pickName(f.workType),
-    location: pickName(f.location),
-    company: pickName(adv) ?? (typeof f.companyName === 'string' ? f.companyName : null),
-  };
-}
-
 type LlmExtraction = {
   title: string | null;
   company: string | null;
@@ -244,9 +184,9 @@ type LlmExtraction = {
 async function llmExtract(visibleText: string, title: string): Promise<LlmExtraction | null> {
   try {
     const out = await callJson<Partial<LlmExtraction>>({
-      step: 'seek-extract:fallback',
+      step: 'linkedin-extract:fallback',
       systemPrompt: 'You extract structured data from job listings. Output strict JSON.',
-      userPrompt: `Extract the SEEK job posting fields from the page text below. Return a JSON object with keys: title, company, location, workType, classification, description (plain text). Use null for unknowns.\n\nPAGE TITLE: ${title}\n\nPAGE TEXT:\n${visibleText}`,
+      userPrompt: `Extract LinkedIn job posting fields from the page text below. Return a JSON object with keys: title, company, location, workType, classification, description (plain text). Use null for unknowns.\n\nPAGE TITLE: ${title}\n\nPAGE TEXT:\n${visibleText}`,
     });
     return {
       title: out.title ?? null,
@@ -257,54 +197,55 @@ async function llmExtract(visibleText: string, title: string): Promise<LlmExtrac
       description: out.description ?? null,
     };
   } catch (err) {
-    log.warn({ err: (err as Error).message }, 'seek-extract: LLM fallback failed');
+    log.warn({ err: (err as Error).message }, 'linkedin-extract: LLM fallback failed');
     return null;
   }
 }
 
+/** Strip click-tracking query params, keep the canonical `/jobs/view/<id>`. */
+function canonicalLinkedInUrl(input: string): string {
+  const m = input.match(/(\d{6,})/);
+  if (m && m[1]) return `https://www.linkedin.com/jobs/view/${m[1]}`;
+  return input.split('?')[0] ?? input;
+}
+
 async function extractOnPage(page: Page, url: string, opts: ExtractOptions): Promise<Job> {
-  const jobId = extractJobIdFromUrl(url);
-  log.info({ jobId, url }, 'seek-extract: navigating');
+  const canonicalUrl = canonicalLinkedInUrl(url);
+  const jobId = extractLinkedInJobIdFromUrl(canonicalUrl);
+  log.info({ jobId, url: canonicalUrl }, 'linkedin-extract: navigating');
+
   const navStart = Date.now();
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
-  log.debug({ jobId, ms: Date.now() - navStart }, 'seek-extract: DOM ready');
+  await page.goto(canonicalUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  log.debug({ jobId, ms: Date.now() - navStart }, 'linkedin-extract: DOM ready');
 
   await page
-    .waitForSelector('script[type="application/ld+json"], [data-automation="jobAdDetails"]', { timeout: 15_000 })
+    .waitForSelector('script[type="application/ld+json"], .top-card-layout__title, .description__text', {
+      timeout: 15_000,
+    })
     .catch(() => null);
 
   const data = await readPageData(page);
   const jsonLd = findJobPosting(data.jsonLdRaw);
-  const nextFields = findNextJobFields(data.nextData);
 
   let title = jsonLd?.title ?? data.title;
   const descriptionHtml = jsonLd?.description ?? null;
   let description = descriptionHtml ? htmlToText(descriptionHtml) : '';
-  let company = companyFromJsonLd(jsonLd ?? {}) ?? nextFields.company ?? companyFromVisibleText(data.fullText, title);
-  let location = locationFromJsonLd(jsonLd ?? {}) ?? nextFields.location;
-  let workType = workTypeFromJsonLd(jsonLd ?? {}) ?? nextFields.workType;
-  let classification = nextFields.classification;
+  let company = companyFromJsonLd(jsonLd ?? {});
+  let location = locationFromJsonLd(jsonLd ?? {});
+  let workType = workTypeFromJsonLd(jsonLd ?? {});
+  let classification = classificationFromJsonLd(jsonLd ?? {});
   const salary = salaryFromJsonLd(jsonLd ?? {});
 
-  // Fall back to visible page text if JSON-LD description is missing/thin.
   if (description.length < 200 && data.visibleText.length > description.length) {
     log.debug(
       { jobId, jsonLdDesc: description.length, visibleText: data.visibleText.length },
-      'seek-extract: using visible text as description',
+      'linkedin-extract: using visible text as description',
     );
     description = data.visibleText;
   }
 
-  // LLM fallback for company if still missing.
-  if (!company && description.length > 50 && !opts.noLlm) {
-    log.info({ jobId }, 'seek-extract: LLM fallback for company');
-    const llm = await llmExtract(description.substring(0, 3000), title);
-    if (llm?.company) company = llm.company;
-  }
-
-  // LLM fallback only if everything above failed.
   if ((!description || description.length < 50) && !opts.noLlm) {
-    log.info({ jobId }, 'seek-extract: invoking LLM fallback');
+    log.info({ jobId }, 'linkedin-extract: invoking LLM fallback');
     const llm = await llmExtract(data.visibleText, title);
     if (llm) {
       title = title || llm.title || title;
@@ -318,8 +259,8 @@ async function extractOnPage(page: Page, url: string, opts: ExtractOptions): Pro
 
   const job: Job = {
     jobId,
-    source: 'seek',
-    url,
+    source: 'linkedin',
+    url: canonicalUrl,
     title: title.trim(),
     company,
     location,
@@ -338,22 +279,21 @@ async function extractOnPage(page: Page, url: string, opts: ExtractOptions): Pro
       title: job.title,
       company: job.company,
       location: job.location,
-      classification: job.classification,
       descChars: job.description.length,
     },
-    'seek-extract: complete',
+    'linkedin-extract: complete',
   );
 
   return job;
 }
 
-export async function seekExtract(url: string, opts: ExtractOptions = {}): Promise<Job> {
-  const jobId = extractJobIdFromUrl(url);
+export async function linkedinExtract(url: string, opts: ExtractOptions = {}): Promise<Job> {
+  const jobId = extractLinkedInJobIdFromUrl(url);
 
   if (!opts.reextract) {
     const cached = db.getJob(jobId);
     if (cached && cached.description.length > 0) {
-      log.info({ jobId }, 'seek-extract: returning cached job (use --reextract to refresh)');
+      log.info({ jobId }, 'linkedin-extract: returning cached job (use --reextract to refresh)');
       return cached;
     }
   }
@@ -362,7 +302,7 @@ export async function seekExtract(url: string, opts: ExtractOptions = {}): Promi
 
   if (!opts.noStore) {
     db.upsertJob(job);
-    log.debug({ jobId }, 'seek-extract: persisted to DB');
+    log.debug({ jobId }, 'linkedin-extract: persisted to DB');
   }
 
   return job;
