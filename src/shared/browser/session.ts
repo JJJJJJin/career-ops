@@ -16,6 +16,8 @@ export type LaunchOptions = {
   headless?: boolean;
   slowMoMs?: number;
   userAgent?: string;
+  /** Extra Chromium CLI flags (e.g. deterministic font rendering for PDF). */
+  args?: string[];
 };
 
 const DEFAULT_UA =
@@ -24,8 +26,8 @@ const DEFAULT_UA =
 export async function launchSession(opts: LaunchOptions = {}): Promise<BrowserSession> {
   const headless = opts.headless ?? config.browser.headless;
   const slowMo = opts.slowMoMs ?? config.browser.slowMoMs;
-  log.debug({ headless, slowMo }, 'browser: launching');
-  const browser = await chromium.launch({ headless, slowMo });
+  log.debug({ headless, slowMo, args: opts.args }, 'browser: launching');
+  const browser = await chromium.launch({ headless, slowMo, args: opts.args });
   const context = await browser.newContext({
     userAgent: opts.userAgent ?? DEFAULT_UA,
     viewport: { width: 1366, height: 900 },
