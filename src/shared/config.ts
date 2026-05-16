@@ -83,6 +83,15 @@ export const config = {
     slowMoMs: parseInt10(process.env.SLOW_MO_MS, 120),
   },
 
+  render: {
+    // Max time to wait for webfonts to finish loading before snapshotting.
+    // Generous default so slow SD-card I/O (Raspberry Pi) doesn't time out.
+    fontTimeoutMs: parseInt10(process.env.PDF_FONT_TIMEOUT_MS, 30000),
+    // Extra settle after fonts report loaded, so the print-media reflow
+    // has actually painted. Bump via env on very slow hosts (Pi: ~800).
+    settleMs: parseInt10(process.env.PDF_RENDER_SETTLE_MS, 600),
+  },
+
   paths: {
     profileDir: resolvePath(process.env.PROFILE_DIR, 'profile'),
     dbPath: resolvePath(process.env.DB_PATH, 'data/seek.sqlite3'),

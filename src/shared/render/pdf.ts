@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import type { Page } from 'playwright';
 import { withBrowser } from '../browser/session.js';
 import { config } from '../config.js';
 import { createLogger } from '../logger.js';
@@ -37,11 +38,13 @@ export async function renderHtmlToPdf(html: string, opts: PdfOptions): Promise<s
     log.debug({ tmpPath, outPath: opts.outPath }, 'pdf: rendering');
     await withBrowser(async ({ page }) => {
       await page.goto('file://' + tmpPath, { waitUntil: 'networkidle' });
+      // Switch to print media *before* forcing fonts so they load under
+      // the same layout we snapshot.
       await page.emulateMedia({ media: 'print' });
-      // Wait for webfonts to finish parsing before snapshotting. On slow
-      // hosts (Pi SD card I/O) the variable woff2 isn't ready when
-      // networkidle fires, so Chromium captures the fallback font.
-      await page.evaluate(() => document.fonts.ready);
+      await waitForFontsReady(page, config.render.fontTimeoutMs);
+      // Even after fonts report loaded, a slow host needs a beat to finish
+      // the print-media reflow/paint before we capture.
+      await page.waitForTimeout(config.render.settleMs);
       await page.pdf({
         path: opts.outPath,
         format: opts.format ?? 'A4',
@@ -59,6 +62,56 @@ export async function renderHtmlToPdf(html: string, opts: PdfOptions): Promise<s
     }
   }
   return opts.outPath;
+}
+
+/**
+ * Block until every declared webfont is genuinely loaded and the layout has
+ * reflowed with the real glyph metrics.
+ *
+ * `document.fonts.ready` alone is unreliable on slow hosts: Chromium only
+ * fetches an `@font-face` file when a glyph in its `unicode-range` is first
+ * needed, so the promise can resolve before the variable woff2 is in and the
+ * print reflow has run — leaving the PDF with cramped fallback metrics. Here
+ * we force *every* face to fetch up front, wait for the set to truly report
+ * loaded (bounded), then flush a reflow + two frames so the paint lands.
+ */
+async function waitForFontsReady(page: Page, timeoutMs: number): Promise<void> {
+  const loaded = await page.evaluate(async (timeout) => {
+    // load() ignores unicode-range and downloads the whole face, so this
+    // guarantees both the latin and latin-ext woff2 are fetched now.
+    const faces = Array.from(document.fonts);
+    await Promise.all(
+      faces.map((f) =>
+        f.status === 'loaded' ? Promise.resolve() : f.load().then(() => undefined, () => undefined),
+      ),
+    );
+    try {
+      await document.fonts.load("400 11px 'DM Sans'");
+    } catch {
+      /* resolved stack may differ on hosts with system fonts; ignore */
+    }
+    await document.fonts.ready;
+
+    const start = Date.now();
+    while (document.fonts.status !== 'loaded') {
+      if (Date.now() - start > timeout) return false;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    // Force layout to pick up real metrics, then wait two frames so the
+    // post-reflow paint has actually happened before the snapshot.
+    void document.body.offsetHeight;
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    return true;
+  }, timeoutMs);
+
+  if (!loaded) {
+    log.warn(
+      { timeoutMs },
+      'pdf: webfonts did not report loaded before timeout; PDF may use fallback metrics',
+    );
+  }
 }
 
 export function loadTemplate(name: 'resume.html' | 'cover-letter.html' | 'company-brief.html'): string {
