@@ -131,8 +131,8 @@ export async function runCli(argv: string[]): Promise<void> {
       i++;
     } else if (a === '--source') {
       const v = (argv[i + 1] ?? '').trim();
-      if (v === 'seek' || v === 'linkedin') sources = (sources ?? []).concat(v);
-      else throw new Error(`--source must be 'seek' or 'linkedin', got '${v}'`);
+      if (v === 'seek' || v === 'linkedin' || v === 'indeed') sources = (sources ?? []).concat(v);
+      else throw new Error(`--source must be 'seek', 'linkedin', or 'indeed', got '${v}'`);
       i++;
     }
   }

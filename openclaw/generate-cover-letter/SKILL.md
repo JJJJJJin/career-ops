@@ -1,6 +1,6 @@
 ---
 name: generate-cover-letter
-description: Generate a tailored 3-paragraph cover letter for one job (under 250 words). Cliché blocklist enforced ("passionate self-starter", etc.). Outputs structured JSON + markdown to output/<slug>/. Use after evaluate-job returns STRONG / BORDERLINE.
+description: Generate a tailored 3-paragraph cover letter for one job (under 250 words). Cliché blocklist enforced ("passionate self-starter", etc.). Outputs structured JSON + markdown to output/<source>/<slug>/. Use after evaluate-job returns STRONG / BORDERLINE.
 ---
 
 # generate-cover-letter
@@ -23,8 +23,8 @@ career-ops generate-cover-letter <jobId> [--force]
 
 ## Outputs
 (`<slug>` = `<company-slug>-<role-slug>`; artefact filenames are prefixed with it.)
-- File: `output/<slug>/<slug>-cover_letter.json` (TailoredCoverLetter).
-- File: `output/<slug>/<slug>-cover_letter.md` (markdown view).
+- File: `output/<source>/<slug>/<slug>-cover_letter.json` (TailoredCoverLetter).
+- File: `output/<source>/<slug>/<slug>-cover_letter.md` (markdown view).
 - DB: `applications.cover_letter_md`, `output_dir`, `generated_at`, `model`.
 
 ## Format constraints (enforced via system prompt)

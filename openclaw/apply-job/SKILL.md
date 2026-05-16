@@ -21,7 +21,7 @@ career-ops apply-job <jobIdOrUrl> [--force] [--reextract] [--skip-brief] [--skip
 ```
 
 ## Inputs
-- `<jobIdOrUrl>` (required) — full SEEK URL (auto-extracted) or numeric jobId.
+- `<jobIdOrUrl>` (required) — full SEEK / LinkedIn / Indeed URL (auto-detected & extracted) or stored jobId (numeric for SEEK, `linkedin:<id>`, `indeed:<jk>`).
 - `--force` — regenerate everything even if cached.
 - `--reextract` — re-fetch the job from SEEK before evaluating.
 - `--skip-brief` — skip company brief (saves one LLM call).
@@ -30,8 +30,8 @@ career-ops apply-job <jobIdOrUrl> [--force] [--reextract] [--skip-brief] [--skip
 - `--email` / `--no-email` — force email delivery on/off (default: on when `.env` is configured).
 - `--email-to <addr>` — override the recipient (default: `$EMAIL_TO`).
 
-## Outputs (per-job folder under output/<slug>/ where slug = `<company-slug>-<role-slug>`)
-All artefact files are prefixed with the slug so they stay self-describing when copied out of the folder.
+## Outputs (per-job folder under output/<source>/<slug>/ where slug = `<company-slug>-<role-slug>`)
+The folder is namespaced by source platform so SEEK / LinkedIn / Indeed runs stay separate (e.g. `output/seek/acme-backend-engineer/`, `output/indeed/acme-backend-engineer/`). All artefact files are prefixed with the slug so they stay self-describing when copied out of the folder.
 - `<slug>-resume.json` + `<slug>-resume.md` + `<slug>-resume.pdf`
 - `<slug>-cover_letter.json` + `<slug>-cover_letter.md` + `<slug>-cover_letter.pdf`
 - `<slug>-company_brief.json` + `<slug>-company_brief.md` + `<slug>-company_brief.pdf`

@@ -1,13 +1,12 @@
-// render-company-brief-pdf — load output/<slug>/company_brief.json, fill
-// company-brief.html template, write company_brief.pdf via Playwright.
+// render-company-brief-pdf — load output/<source>/<slug>/<slug>-company_brief.json,
+// fill the company-brief.html template, write <slug>-company_brief.pdf via Playwright.
 //
 // Same shape as render-resume-pdf / render-cover-letter-pdf so apply-job
 // can chain them uniformly.
 import fs from 'node:fs';
 import path from 'node:path';
-import { config } from '../../shared/config.js';
 import { db } from '../../shared/db/store.js';
-import { applicationSlug } from '../../shared/slug.js';
+import { applicationDir, applicationSlug } from '../../shared/slug.js';
 import { createLogger } from '../../shared/logger.js';
 import { escapeHtml, inlineMd, renderTemplate } from '../../shared/render/template.js';
 import { loadTemplate, renderHtmlToPdf } from '../../shared/render/pdf.js';
@@ -58,7 +57,7 @@ export async function renderCompanyBriefPdf(jobId: string, opts: RenderCompanyBr
   if (!job) throw new Error(`render-company-brief-pdf: ${jobId} not in DB.`);
 
   const slug = applicationSlug(job.company, job.title);
-  const outputDir = path.join(config.paths.applicationsDir, slug);
+  const outputDir = applicationDir(job);
   const jsonPath = path.join(outputDir, `${slug}-company_brief.json`);
   if (!fs.existsSync(jsonPath)) {
     throw new Error(

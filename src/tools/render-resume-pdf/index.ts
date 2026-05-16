@@ -1,10 +1,9 @@
-// render-resume-pdf — load output/<slug>/resume.json, fill resume.html
-// template, write resume.pdf via Playwright.
+// render-resume-pdf — load output/<source>/<slug>/<slug>-resume.json, fill
+// the resume.html template, write <slug>-resume.pdf via Playwright.
 import fs from 'node:fs';
 import path from 'node:path';
-import { config } from '../../shared/config.js';
 import { db } from '../../shared/db/store.js';
-import { applicationSlug } from '../../shared/slug.js';
+import { applicationDir, applicationSlug } from '../../shared/slug.js';
 import { createLogger } from '../../shared/logger.js';
 import { escapeHtml, inlineMd, renderTemplate } from '../../shared/render/template.js';
 import { loadTemplate, renderHtmlToPdf } from '../../shared/render/pdf.js';
@@ -166,7 +165,7 @@ export async function renderResumePdf(jobId: string, opts: RenderResumePdfOption
   if (!job) throw new Error(`render-resume-pdf: ${jobId} not in DB.`);
 
   const slug = applicationSlug(job.company, job.title);
-  const outputDir = path.join(config.paths.applicationsDir, slug);
+  const outputDir = applicationDir(job);
   const jsonPath = path.join(outputDir, `${slug}-resume.json`);
   if (!fs.existsSync(jsonPath)) {
     throw new Error(`render-resume-pdf: ${jsonPath} not found. Run \`career-ops generate-resume ${jobId}\` first.`);

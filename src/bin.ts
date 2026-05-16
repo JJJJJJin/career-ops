@@ -12,6 +12,8 @@ const COMMANDS: Record<string, () => Promise<{ runCli: (argv: string[]) => Promi
   'seek-extract': () => import('./tools/seek-extract/cli.js'),
   'linkedin-search': () => import('./tools/linkedin-search/cli.js'),
   'linkedin-extract': () => import('./tools/linkedin-extract/cli.js'),
+  'indeed-search': () => import('./tools/indeed-search/cli.js'),
+  'indeed-extract': () => import('./tools/indeed-extract/cli.js'),
   'web-distill': () => import('./tools/web-distill/cli.js'),
 
   // profile
@@ -49,7 +51,7 @@ const COMMANDS: Record<string, () => Promise<{ runCli: (argv: string[]) => Promi
 };
 
 const TOOL_GROUPS: Array<{ heading: string; tools: string[] }> = [
-  { heading: 'Discovery & ingestion', tools: ['seek-search', 'seek-extract', 'linkedin-search', 'linkedin-extract', 'web-distill'] },
+  { heading: 'Discovery & ingestion', tools: ['seek-search', 'seek-extract', 'linkedin-search', 'linkedin-extract', 'indeed-search', 'indeed-extract', 'web-distill'] },
   { heading: 'Profile', tools: ['distill-profile'] },
   { heading: 'Evaluation', tools: ['flag-eligibility', 'summarize-job', 'match-job', 'evaluate-job'] },
   { heading: 'Generation', tools: ['generate-resume', 'generate-cover-letter', 'generate-company-brief'] },
@@ -60,7 +62,7 @@ const TOOL_GROUPS: Array<{ heading: string; tools: string[] }> = [
 ];
 
 function printHelp(): void {
-  process.stdout.write(`career-ops — multi-source job-search pipeline (SEEK, LinkedIn)
+  process.stdout.write(`career-ops — multi-source job-search pipeline (SEEK, LinkedIn, Indeed)
 
 Usage: career-ops <command> [args]
 

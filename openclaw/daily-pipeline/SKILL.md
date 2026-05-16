@@ -1,6 +1,6 @@
 ---
 name: daily-pipeline
-description: Scheduled / on-demand full sweep — scan SEEK with the configured keywords, extract + evaluate every new job, optionally auto-apply the top N STRONG matches. Use as a morning brief, a cron job, or whenever the user says "refresh and tell me what's worth applying to".
+description: Scheduled / on-demand full sweep — scan one or more job sources (SEEK / LinkedIn / Indeed) with the configured keywords, extract + evaluate every new job, optionally auto-apply the top N STRONG matches. Use as a morning brief, a cron job, or whenever the user says "refresh and tell me what's worth applying to".
 ---
 
 # daily-pipeline
@@ -16,23 +16,24 @@ Skip when:
 
 ## How to invoke
 ```
-career-ops daily-pipeline [-q "keyword"] [--auto-apply-top N] [--force]
+career-ops daily-pipeline [-q "keyword"] [--source seek|linkedin|indeed] [--auto-apply-top N] [--force]
 ```
 
 ## Inputs
 - `-q / --keyword` — override config keywords. Repeatable.
+- `--source <name>` — repeatable; pick which platforms to scan (`seek` / `linkedin` / `indeed`). Defaults to `seek`. Each source must implement search.
 - `--auto-apply-top N` — automatically run `apply-job` for the top N STRONG matches discovered this run (default 0 = evaluate only).
 - `--force` — re-evaluate cached jobs.
 
 ## Outputs
 - Stdout: scan totals → `(scanned: X, new: Y, evaluated: Z, STRONG: K, applied: M)`
 - DB: scan_runs row per keyword, jobs / applications populated for new finds.
-- Files: per-job artefacts for any auto-applied roles in `output/<slug>/`.
+- Files: per-job artefacts for any auto-applied roles in `output/<source>/<slug>/`.
 - File: `data/applications.md` regenerated.
 
 ## Behavior
-1. **Scan** — runs `seek-search` with config keywords / location / days.
-2. **Extract + evaluate** — for each NEW job: `seek-extract` then `evaluate-job` (sequential, polite jitter inherited from seek-search).
+1. **Scan** — runs each requested source's search with config keywords / location / days.
+2. **Extract + evaluate** — for each NEW job: source-specific extract then `evaluate-job` (sequential, polite jitter inherited from the search).
 3. **Auto-apply** — for the top `N` STRONG eligible matches by score, runs `apply-job`. If `N = 0`, this stage is skipped.
 
 ## Token cost

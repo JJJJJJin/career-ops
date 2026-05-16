@@ -25,6 +25,10 @@ To install into a different skills directory:
 ### Discovery & ingestion
 - **[seek-search](seek-search/SKILL.md)** — keyword search across SEEK, ingests stubs into the DB
 - **[seek-extract](seek-extract/SKILL.md)** — fetch one SEEK URL → full SeekJob row
+- **[linkedin-search](linkedin-search/SKILL.md)** — keyword search across LinkedIn (public guest endpoint)
+- **[linkedin-extract](linkedin-extract/SKILL.md)** — fetch one LinkedIn URL → full Job row (`linkedin:<id>`)
+- **[indeed-search](indeed-search/SKILL.md)** — keyword search across Indeed Australia
+- **[indeed-extract](indeed-extract/SKILL.md)** — fetch one Indeed URL → full Job row (`indeed:<jk>`)
 - **[web-distill](web-distill/SKILL.md)** — any URL → clean markdown (Mozilla Readability)
 
 ### Profile

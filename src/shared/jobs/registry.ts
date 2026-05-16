@@ -1,6 +1,8 @@
 // Registry of job sources. Tools that don't care which platform a job came
 // from import `getSource`, `detectSource`, or `sourceForJobId` from here.
+import { INDEED_JOB_ID_PREFIX } from '../../tools/indeed-extract/index.js';
 import { LINKEDIN_JOB_ID_PREFIX } from '../../tools/linkedin-extract/index.js';
+import { INDEED_SOURCE } from './indeed.js';
 import { LINKEDIN_SOURCE } from './linkedin.js';
 import { SEEK_SOURCE } from './seek.js';
 import type { JobSource, JobSourceName } from './types.js';
@@ -8,6 +10,7 @@ import type { JobSource, JobSourceName } from './types.js';
 export const SOURCES: Record<JobSourceName, JobSource> = {
   seek: SEEK_SOURCE,
   linkedin: LINKEDIN_SOURCE,
+  indeed: INDEED_SOURCE,
 };
 
 /** Look up a source by name. Throws on unknown name to fail loudly. */
@@ -26,11 +29,13 @@ export function detectSource(url: string): JobSource | null {
 }
 
 /**
- * Figure out which source a stored jobId belongs to. LinkedIn IDs are
- * prefixed (`linkedin:…`); everything else is assumed SEEK (legacy IDs).
+ * Figure out which source a stored jobId belongs to. LinkedIn / Indeed IDs
+ * are namespace-prefixed (`linkedin:…`, `indeed:…`); everything else is
+ * assumed SEEK (legacy bare-numeric IDs).
  */
 export function sourceForJobId(jobId: string): JobSource {
   if (jobId.startsWith(LINKEDIN_JOB_ID_PREFIX)) return SOURCES.linkedin;
+  if (jobId.startsWith(INDEED_JOB_ID_PREFIX)) return SOURCES.indeed;
   return SOURCES.seek;
 }
 

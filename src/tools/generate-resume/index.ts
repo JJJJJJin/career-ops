@@ -11,7 +11,7 @@ import path from 'node:path';
 import { callJson } from '../../shared/llm/client.js';
 import { config } from '../../shared/config.js';
 import { db } from '../../shared/db/store.js';
-import { applicationSlug } from '../../shared/slug.js';
+import { applicationDir, applicationSlug } from '../../shared/slug.js';
 import { createLogger } from '../../shared/logger.js';
 import type { JobSummary, MatchAnalysis, Job } from '../../shared/db/types.js';
 import { ensureProfile } from '../distill-profile/index.js';
@@ -181,7 +181,7 @@ export async function generateResume(jobId: string, opts: GenerateResumeOptions 
   const { profile, markdown: profileMd } = await ensureProfile();
 
   const slug = applicationSlug(job.company, job.title);
-  const outputDir = path.join(config.paths.applicationsDir, slug);
+  const outputDir = applicationDir(job);
   const resumeJsonPath = path.join(outputDir, `${slug}-resume.json`);
   const resumeMdPath = path.join(outputDir, `${slug}-resume.md`);
 

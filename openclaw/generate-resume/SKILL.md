@@ -1,6 +1,6 @@
 ---
 name: generate-resume
-description: Generate a tailored resume for one job — variant-aware (picks the closest project framing from profile.md without blending), one-page, ATS-friendly. Outputs structured JSON + a markdown view to output/<company-slug>-<role-slug>/. Use after the user decides to apply (recommendation STRONG, or BORDERLINE override).
+description: Generate a tailored resume for one job — variant-aware (picks the closest project framing from profile.md without blending), one-page, ATS-friendly. Outputs structured JSON + a markdown view to output/<source>/<company-slug>-<role-slug>/. Use after the user decides to apply (recommendation STRONG, or BORDERLINE override).
 ---
 
 # generate-resume
@@ -21,12 +21,12 @@ career-ops generate-resume <jobId> [--force]
 
 ## Inputs
 - `<jobId>` (required) — job must be in DB. Auto-summarizes / matches / distills profile if needed.
-- `--force` — regenerate even if `output/<slug>/<slug>-resume.json` already exists.
+- `--force` — regenerate even if `output/<source>/<slug>/<slug>-resume.json` already exists.
 
 ## Outputs
 (`<slug>` = `<company-slug>-<role-slug>`; artefact filenames are prefixed with it.)
-- File: `output/<slug>/<slug>-resume.json` (structured TailoredResume).
-- File: `output/<slug>/<slug>-resume.md` (deterministic markdown view of the JSON).
+- File: `output/<source>/<slug>/<slug>-resume.json` (structured TailoredResume).
+- File: `output/<source>/<slug>/<slug>-resume.md` (deterministic markdown view of the JSON).
 - DB: `applications.resume_md`, `output_dir`, `generated_at`, `model`, `profile_hash`.
 
 ## Chaining

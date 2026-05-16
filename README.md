@@ -1,22 +1,24 @@
 # career-ops
 
-A SEEK-focused job-search pipeline you drive from Claude Code (or any
-terminal). Twenty composable tools — scan, extract, evaluate, tailor,
-render — wired together as openclaw skills. The agent picks one tool or
-chains many depending on what you ask.
+A multi-source job-search pipeline (SEEK, LinkedIn, Indeed) you drive from
+Claude Code (or any terminal). Twenty-plus composable tools — scan, extract,
+evaluate, tailor, render — wired together as openclaw skills. The agent picks
+one tool or chains many depending on what you ask.
 
 > Originally forked from [santifer/career-ops](https://github.com/santifer/career-ops).
-> This fork strips it down to: SEEK Australia only, TypeScript +
-> Playwright, multi-provider LLM (OpenAI primary + DeepSeek fallback, also Gemini & Groq), every step exposed as
-> a Claude Code skill so your local openclaw can compose them.
+> This fork stripped it down to TypeScript + Playwright, multi-provider LLM
+> (OpenAI primary + DeepSeek fallback, also Gemini & Groq), and rebuilt every
+> step as a Claude Code skill so your local openclaw can compose them. SEEK
+> Australia is the original target; LinkedIn and Indeed Australia are wired in
+> through the same source-agnostic registry.
 
 ## What you get per job
 
-Every artefact is prefixed with the folder's slug (`<company-slug>-<role-slug>`) so files stay self-describing once they're out of the folder (email attachments, chat uploads, etc.).
+Every artefact is prefixed with the folder's slug (`<company-slug>-<role-slug>`) so files stay self-describing once they're out of the folder (email attachments, chat uploads, etc.). The folder is namespaced by source platform — `output/seek/`, `output/linkedin/`, `output/indeed/` — so you can eyeball at a glance which platform a result came from.
 
 ```
-output/<slug>/                                    # <slug> = <company-slug>-<role-slug>
-├── <slug>-resume.pdf            ← submit this
+output/<source>/<slug>/                           # <source> = seek|linkedin|indeed
+├── <slug>-resume.pdf            ← submit this        # <slug> = <company-slug>-<role-slug>
 ├── <slug>-resume.md             ← human-readable view
 ├── <slug>-resume.json           ← structured (re-renderable)
 ├── <slug>-cover_letter.pdf      ← submit this
@@ -68,8 +70,12 @@ language. The pure functions are importable from `src/tools/<tool>/index.ts`.
 
 | Tool | Contract | LLM? |
 |---|---|---|
-| **`seek-search`** | keywords, location, days → `[{jobId, url, title, company}]` (upserts thin job rows + scan_runs) | no |
-| **`seek-extract`** | url → `SeekJob` (parses JSON-LD + `__NEXT_DATA__`, falls back to visible text, then LLM) | rare |
+| **`seek-search`** | keywords, location, days → `[{jobId, url, title, company}]` (upserts thin job rows + scan_runs, `source='seek'`) | no |
+| **`seek-extract`** | url → `Job` (parses JSON-LD + `__NEXT_DATA__`, falls back to visible text, then LLM) | rare |
+| **`linkedin-search`** | same contract as seek-search but against LinkedIn's public guest endpoint, `source='linkedin'` | no |
+| **`linkedin-extract`** | url → `Job` (LinkedIn JSON-LD JobPosting, `linkedin:<id>` namespacing) | rare |
+| **`indeed-search`** | same contract as seek-search but against Indeed Australia, `source='indeed'` | no |
+| **`indeed-extract`** | url → `Job` (Indeed JSON-LD JobPosting, `indeed:<jk>` namespacing) | rare |
 | **`web-distill`** | any url → clean markdown (Mozilla Readability + sanitize-html) | no |
 
 ### Profile
@@ -138,10 +144,14 @@ career-ops evaluate-job https://www.seek.com.au/job/12345678
 
 # Generate the full bundle
 career-ops apply-job 12345678
-#   → output/acme-pty-ltd-senior-backend-engineer/
+#   → output/seek/acme-pty-ltd-senior-backend-engineer/
 #       ├── acme-pty-ltd-senior-backend-engineer-resume.pdf
 #       ├── acme-pty-ltd-senior-backend-engineer-cover_letter.pdf
 #       └── acme-pty-ltd-senior-backend-engineer-company_brief.md
+#
+# Indeed / LinkedIn URLs land under their own subdir:
+career-ops apply-job https://au.indeed.com/viewjob?jk=abc123…
+#   → output/indeed/acme-pty-ltd-backend-engineer/…
 
 # Daily morning brief (with auto-apply for STRONG matches)
 career-ops daily-pipeline --auto-apply-top 3
@@ -168,11 +178,13 @@ natural language:
 | User says | openclaw chains |
 |---|---|
 | "find me python grad jobs this week" | `seek-search -q python --days 7` → `query-jobs --since-days 7 --eligible-only` |
+| "scan Indeed for AI engineer roles" | `indeed-search -q "ai engineer" --days 7` |
 | "should I apply to https://seek.com.au/job/12345" | `evaluate-job 12345` |
+| "should I apply to https://au.indeed.com/viewjob?jk=abc…" | `evaluate-job <url>` (auto-routes through indeed-extract) |
 | "yes, apply" | `apply-job 12345` |
 | "what did I apply to last month?" | `query-jobs --status applied --since-days 30` |
 | "regenerate the resume PDF" | `render-resume-pdf 12345` |
-| "morning brief" | `daily-pipeline` |
+| "morning brief" | `daily-pipeline --source seek --source indeed` |
 | "I got rejected from Acme" | find jobId, then `mark-job <jobId> rejected` |
 
 Add new natural-language patterns by editing the `description:` field in
@@ -240,8 +252,8 @@ matches the target job — it never blends them.
 | `GEMINI_API_KEY` | — | OpenAI-compat endpoint (`generativelanguage.googleapis.com/v1beta/openai`) |
 | `GROQ_API_KEY` | — | OpenAI-compat endpoint (`api.groq.com/openai/v1`) |
 | `SEARCH_KEYWORDS` | grad/junior SWE & AI | comma-separated; one search per keyword |
-| `SEARCH_LOCATION` | `All Australia` | any SEEK-recognised string |
-| `DATE_RANGE_DAYS` | `7` | SEEK supports 1, 3, 7, 14, 31 |
+| `SEARCH_LOCATION` | `All Australia` | any SEEK / LinkedIn / Indeed -recognised string. Indeed prefers city/state/postcode or "Australia". |
+| `DATE_RANGE_DAYS` | `7` | SEEK supports 1, 3, 7, 14, 31. LinkedIn / Indeed accept arbitrary day windows. |
 | `MAX_JOBS_PER_KEYWORD` | `40` | polite cap |
 | `HEADLESS` | `true` | `false` shows the browser |
 | `SLOW_MO_MS` | `120` | per-op delay |
@@ -310,7 +322,7 @@ career-ops/
 
 Three tables:
 
-- **`jobs`** — raw scraped data (title, company, description, classification, eligibility flags). One row per SEEK posting.
+- **`jobs`** — raw scraped data (title, company, description, classification, eligibility flags). One row per posting; `source` column tags it as `seek` / `linkedin` / `indeed`.
 - **`applications`** — LLM-derived score + status. `status` lifecycle: `new → interested → applied → interview → rejected | offer | skip`.
 - **`scan_runs`** — history of `seek-search` invocations (per keyword: jobs found, jobs new).
 

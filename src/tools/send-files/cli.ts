@@ -8,7 +8,7 @@ function printUsage(): void {
   career-ops send-files --job <jobId> [--ext .pdf,.docx] [options]
 
 Options:
-  --job <jobId>            Auto-collect files from output/<slug>/ for this job
+  --job <jobId>            Auto-collect files from output/<source>/<slug>/ for this job
   --ext <list>             Comma-separated extension filter when --job is used (default: .pdf)
   --webhook <url>          Override the webhook URL (default: $WEBHOOK_URL)
   --provider <name>        Webhook provider (default: $WEBHOOK_PROVIDER or 'wecom'). Available: ${KNOWN_PROVIDERS.join(', ')}

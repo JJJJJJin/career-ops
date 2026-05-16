@@ -4,16 +4,16 @@
 // Two ways to specify what to send:
 //   1. Explicit file paths:        sendFiles({ paths: [...] })
 //   2. By jobId:                    sendFiles({ jobId: '12345' })
-//      → auto-collects every PDF in output/<company-slug>-<role-slug>/
+//      → auto-collects every PDF in output/<source>/<company-slug>-<role-slug>/
+//        (source resolved from the stored job row: seek / linkedin / indeed)
 //
 // Designed to be the one-stop notifier. To add more formats in the
 // future, just pass them via `paths` — the underlying provider already
 // dispatches by extension (.pdf/.docx/etc. → file, .png/.jpg → image).
 import fs from 'node:fs';
 import path from 'node:path';
-import { config } from '../../shared/config.js';
 import { db } from '../../shared/db/store.js';
-import { applicationSlug } from '../../shared/slug.js';
+import { applicationDir } from '../../shared/slug.js';
 import { createLogger } from '../../shared/logger.js';
 import { sendFiles as dispatchSend, listProviders } from '../../shared/notify/index.js';
 import type { SendResult } from '../../shared/notify/index.js';
@@ -23,7 +23,7 @@ const log = createLogger('send-files');
 export type SendFilesOptions = {
   /** Explicit list of file paths (absolute or relative to cwd). */
   paths?: string[];
-  /** When set, auto-collects all PDFs in output/<slug>/. */
+  /** When set, auto-collects all PDFs in output/<source>/<slug>/. */
   jobId?: string;
   /** Optional file extension filter when collecting by jobId. Default: ['.pdf']. */
   extensions?: string[];
@@ -50,7 +50,7 @@ function defaultExtensions(): string[] {
 function collectFilesForJob(jobId: string, extensions: string[]): string[] {
   const job = db.getJob(jobId);
   if (!job) throw new Error(`send-files: jobId ${jobId} not in DB.`);
-  const dir = path.join(config.paths.applicationsDir, applicationSlug(job.company, job.title));
+  const dir = applicationDir(job);
   if (!fs.existsSync(dir)) {
     throw new Error(`send-files: output dir not found for ${jobId}: ${dir}. Run apply-job first.`);
   }

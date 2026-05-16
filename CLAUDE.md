@@ -1,7 +1,8 @@
 # career-ops — Claude / openclaw entrypoint
 
-This repo is a catalog of TypeScript tools for a SEEK-focused job pipeline
-(scan, evaluate, tailor resume + cover letter, render PDFs).
+This repo is a catalog of TypeScript tools for a multi-source job pipeline
+(SEEK, LinkedIn, Indeed) — scan, evaluate, tailor resume + cover letter,
+render PDFs.
 
 ## For openclaw / Claude Code
 
@@ -37,5 +38,7 @@ npm run career-ops -- --help
   Use `distill-profile` to convert it to `profile/profile.json` (structured).
 - `data/seek.sqlite3` is the source of truth. `data/applications.md` is a
   generated read-only view — never hand-edit.
-- Per-job artefacts go to `output/<company-slug>-<role-slug>/`.
+- Per-job artefacts go to `output/<source>/<company-slug>-<role-slug>/`
+  (the `<source>` segment is `seek` / `linkedin` / `indeed` so you can
+  navigate by platform at a glance).
 - Never auto-submit applications. Render artefacts; the human submits.

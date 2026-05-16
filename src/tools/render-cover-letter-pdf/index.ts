@@ -1,10 +1,9 @@
-// render-cover-letter-pdf — load output/<slug>/cover_letter.json, fill
-// cover-letter.html template, write cover_letter.pdf.
+// render-cover-letter-pdf — load output/<source>/<slug>/<slug>-cover_letter.json,
+// fill the cover-letter.html template, write <slug>-cover_letter.pdf.
 import fs from 'node:fs';
 import path from 'node:path';
-import { config } from '../../shared/config.js';
 import { db } from '../../shared/db/store.js';
-import { applicationSlug } from '../../shared/slug.js';
+import { applicationDir, applicationSlug } from '../../shared/slug.js';
 import { createLogger } from '../../shared/logger.js';
 import { escapeHtml, renderTemplate } from '../../shared/render/template.js';
 import { loadTemplate, renderHtmlToPdf } from '../../shared/render/pdf.js';
@@ -40,7 +39,7 @@ export async function renderCoverLetterPdf(jobId: string, opts: RenderCoverLette
   if (!job) throw new Error(`render-cover-letter-pdf: ${jobId} not in DB.`);
 
   const slug = applicationSlug(job.company, job.title);
-  const outputDir = path.join(config.paths.applicationsDir, slug);
+  const outputDir = applicationDir(job);
   const jsonPath = path.join(outputDir, `${slug}-cover_letter.json`);
   if (!fs.existsSync(jsonPath)) {
     throw new Error(

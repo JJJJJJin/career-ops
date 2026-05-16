@@ -7,7 +7,7 @@ import path from 'node:path';
 import { callJson } from '../../shared/llm/client.js';
 import { config } from '../../shared/config.js';
 import { db } from '../../shared/db/store.js';
-import { applicationSlug } from '../../shared/slug.js';
+import { applicationDir, applicationSlug } from '../../shared/slug.js';
 import { createLogger } from '../../shared/logger.js';
 import type { JobSummary, Job } from '../../shared/db/types.js';
 import { summarizeJob } from '../summarize-job/index.js';
@@ -111,7 +111,7 @@ export async function generateCompanyBrief(jobId: string, opts: GenerateCompanyB
   const summary: JobSummary = await summarizeJob(jobId);
 
   const slug = applicationSlug(job.company, job.title);
-  const outputDir = path.join(config.paths.applicationsDir, slug);
+  const outputDir = applicationDir(job);
   const mdPath = path.join(outputDir, `${slug}-company_brief.md`);
   const jsonPath = path.join(outputDir, `${slug}-company_brief.json`);
 
