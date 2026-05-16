@@ -1,7 +1,25 @@
 # ─── Personal data ────────────────────────────────────────────────────
+# Everything under profile/ is personal (CV, scanned IDs, certificates).
+# Ignore the WHOLE directory — listing individual files is what let
+# "Internship Certificate.JPG" slip through before.
+profile/
 profile/profile.md
 profile/profile.json
 profile/.profile.hash
+
+# Defense-in-depth: never commit scanned documents / ID images anywhere.
+*.jpg
+*.jpeg
+*.JPG
+*.JPEG
+*.png
+*.PNG
+*.pdf
+*.PDF
+*.heic
+*.HEIC
+*.docx
+*.doc
 
 # ─── Generated ────────────────────────────────────────────────────────
 data/*.sqlite3
