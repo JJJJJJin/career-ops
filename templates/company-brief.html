@@ -34,7 +34,10 @@
        with wide caption-master spacing. */
     font-optical-sizing: none;
     font-variation-settings: "opsz" 14, "wght" 400;
-    text-rendering: optimizeLegibility;
+    /* optimizeLegibility forces Chromium's complex shaper, which mis-advances
+       this variable woff2 on the Pi's FreeType build (phantom spaces inside
+       words). optimizeSpeed pins the simple, platform-stable glyph path. */
+    text-rendering: optimizeSpeed;
     -webkit-font-smoothing: antialiased;
   }
 

@@ -11,6 +11,17 @@ import { createLogger } from '../logger.js';
 
 const log = createLogger('pdf');
 
+// Make headless-Chromium text rasterization deterministic across hosts.
+// Without these, the Pi's FreeType build mis-computes variable-font glyph
+// advances and injects phantom spaces inside words; macOS Chrome's CoreText
+// path hides the same bug. These flags pin the simple, platform-stable path.
+const FONT_RENDER_ARGS = [
+  '--font-render-hinting=none',
+  '--disable-lcd-text',
+  '--disable-font-subpixel-positioning',
+  '--force-color-profile=srgb',
+];
+
 export type PdfOptions = {
   /** Output path. Parent dir is created if missing. */
   outPath: string;
@@ -51,7 +62,7 @@ export async function renderHtmlToPdf(html: string, opts: PdfOptions): Promise<s
         margin: { top: margin, right: margin, bottom: margin, left: margin },
         printBackground: true,
       });
-    });
+    }, { args: FONT_RENDER_ARGS });
     log.info({ outPath: opts.outPath }, 'pdf: written');
   } finally {
     try {
