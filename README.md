@@ -1,7 +1,7 @@
 # career-ops
 
-A multi-source job-search pipeline (SEEK, LinkedIn, Indeed) you drive from
-Claude Code (or any terminal). Twenty-plus composable tools — scan, extract,
+A multi-source job-search pipeline (SEEK, LinkedIn, Indeed, Built In) you drive
+from Claude Code (or any terminal). Twenty-plus composable tools — scan, extract,
 evaluate, tailor, render — wired together as openclaw skills. The agent picks
 one tool or chains many depending on what you ask.
 
@@ -14,10 +14,10 @@ one tool or chains many depending on what you ask.
 
 ## What you get per job
 
-Every artefact is prefixed with the folder's slug (`<company-slug>-<role-slug>`) so files stay self-describing once they're out of the folder (email attachments, chat uploads, etc.). The folder is namespaced by source platform — `output/seek/`, `output/linkedin/`, `output/indeed/` — so you can eyeball at a glance which platform a result came from.
+Every artefact is prefixed with the folder's slug (`<company-slug>-<role-slug>`) so files stay self-describing once they're out of the folder (email attachments, chat uploads, etc.). The folder is namespaced by source platform — `output/seek/`, `output/linkedin/`, `output/indeed/`, `output/builtin/` — so you can eyeball at a glance which platform a result came from.
 
 ```
-output/<source>/<slug>/                           # <source> = seek|linkedin|indeed
+output/<source>/<slug>/                           # <source> = seek|linkedin|indeed|builtin
 ├── <slug>-resume.pdf            ← submit this        # <slug> = <company-slug>-<role-slug>
 ├── <slug>-resume.md             ← human-readable view
 ├── <slug>-resume.json           ← structured (re-renderable)
@@ -76,6 +76,8 @@ language. The pure functions are importable from `src/tools/<tool>/index.ts`.
 | **`linkedin-extract`** | url → `Job` (LinkedIn JSON-LD JobPosting, `linkedin:<id>` namespacing) | rare |
 | **`indeed-search`** | same contract as seek-search but against Indeed Australia, `source='indeed'` | no |
 | **`indeed-extract`** | url → `Job` (Indeed JSON-LD JobPosting, `indeed:<jk>` namespacing) | rare |
+| **`builtin-search`** | same contract as seek-search but against Built In (builtin.com), `source='builtin'`. US/remote-centric — location is advisory (a "remote" hint only) | no |
+| **`builtin-extract`** | url → `Job` (Built In JSON-LD JobPosting, `builtin:<id>` namespacing) | rare |
 | **`web-distill`** | any url → clean markdown (Mozilla Readability + sanitize-html) | no |
 
 ### Profile
@@ -130,7 +132,7 @@ language. The pure functions are importable from `src/tools/<tool>/index.ts`.
 | Tool | Chains |
 |---|---|
 | **`apply-job`** ⭐ | `evaluate-job` → (parallel) `generate-{resume, cover-letter, company-brief}` → (parallel) `render-{resume, cover-letter, company-brief}-pdf` → `render-tracker` → (optional) email PDF bundle to `$EMAIL_TO` |
-| **`daily-pipeline`** | `seek-search` → for each new job: `seek-extract` + `evaluate-job` → optional auto-`apply-job` for top N STRONG matches |
+| **`daily-pipeline`** | `<source>-search` (seek\|linkedin\|indeed\|builtin) → for each new job: `<source>-extract` + `evaluate-job` → optional auto-`apply-job` for top N STRONG matches |
 
 ⭐ = the two main entry points. Most natural-language asks route to one of these.
 
@@ -179,6 +181,7 @@ natural language:
 |---|---|
 | "find me python grad jobs this week" | `seek-search -q python --days 7` → `query-jobs --since-days 7 --eligible-only` |
 | "scan Indeed for AI engineer roles" | `indeed-search -q "ai engineer" --days 7` |
+| "find remote roles on Built In" | `builtin-search -q "software engineer" --location remote` |
 | "should I apply to https://seek.com.au/job/12345" | `evaluate-job 12345` |
 | "should I apply to https://au.indeed.com/viewjob?jk=abc…" | `evaluate-job <url>` (auto-routes through indeed-extract) |
 | "yes, apply" | `apply-job 12345` |
@@ -252,8 +255,8 @@ matches the target job — it never blends them.
 | `GEMINI_API_KEY` | — | OpenAI-compat endpoint (`generativelanguage.googleapis.com/v1beta/openai`) |
 | `GROQ_API_KEY` | — | OpenAI-compat endpoint (`api.groq.com/openai/v1`) |
 | `SEARCH_KEYWORDS` | grad/junior SWE & AI | comma-separated; one search per keyword |
-| `SEARCH_LOCATION` | `All Australia` | any SEEK / LinkedIn / Indeed -recognised string. Indeed prefers city/state/postcode or "Australia". |
-| `DATE_RANGE_DAYS` | `7` | SEEK supports 1, 3, 7, 14, 31. LinkedIn / Indeed accept arbitrary day windows. |
+| `SEARCH_LOCATION` | `All Australia` | any SEEK / LinkedIn / Indeed -recognised string. Indeed prefers city/state/postcode or "Australia". **Built In ignores it** (US/remote-centric, internal location ids) — pass `--location remote` to bias remote. |
+| `DATE_RANGE_DAYS` | `7` | SEEK supports 1, 3, 7, 14, 31. LinkedIn / Indeed / Built In accept arbitrary day windows. |
 | `MAX_JOBS_PER_KEYWORD` | `40` | polite cap |
 | `HEADLESS` | `true` | `false` shows the browser |
 | `SLOW_MO_MS` | `120` | per-op delay |
@@ -312,10 +315,10 @@ career-ops/
 │   └── install-skills.sh
 ├── src/
 │   ├── bin.ts                    # CLI dispatcher
-│   ├── tools/<tool>/             # 18 tools (index.ts + cli.ts)
+│   ├── tools/<tool>/             # one dir per tool (index.ts + cli.ts)
 │   ├── workflows/                # apply-job, daily-pipeline
 │   └── shared/                   # logger, config, llm, browser, db, render, slug
-└── openclaw/<tool>/SKILL.md      # 20 skill manifests + index
+└── openclaw/<tool>/SKILL.md      # one skill manifest per tool + index
 ```
 
 ## SQLite schema

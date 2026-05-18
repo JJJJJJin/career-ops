@@ -7,7 +7,7 @@ import type { Job, JobSearchStub } from '../db/types.js';
 export type { Job, JobSearchStub };
 
 /** Platform identifier. Add new keys here when wiring a new source. */
-export type JobSourceName = 'seek' | 'linkedin' | 'indeed';
+export type JobSourceName = 'seek' | 'linkedin' | 'indeed' | 'builtin';
 
 export type JobSearchOptions = {
   keywords?: string[];

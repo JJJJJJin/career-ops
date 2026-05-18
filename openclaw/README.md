@@ -29,6 +29,8 @@ To install into a different skills directory:
 - **[linkedin-extract](linkedin-extract/SKILL.md)** — fetch one LinkedIn URL → full Job row (`linkedin:<id>`)
 - **[indeed-search](indeed-search/SKILL.md)** — keyword search across Indeed Australia
 - **[indeed-extract](indeed-extract/SKILL.md)** — fetch one Indeed URL → full Job row (`indeed:<jk>`)
+- **[builtin-search](builtin-search/SKILL.md)** — keyword search across Built In (builtin.com); US/remote-centric, location advisory
+- **[builtin-extract](builtin-extract/SKILL.md)** — fetch one Built In URL → full Job row (`builtin:<id>`)
 - **[web-distill](web-distill/SKILL.md)** — any URL → clean markdown (Mozilla Readability)
 
 ### Profile
@@ -71,6 +73,7 @@ To install into a different skills directory:
 | User says | openclaw chains |
 |---|---|
 | "find me python grad jobs this week" | `seek-search -q python --days 7` → `query-jobs --since-days 7 --eligible-only` |
+| "find remote engineer roles on Built In" | `builtin-search -q "software engineer" --location remote` → `query-jobs --since-days 7 --eligible-only` |
 | "should I apply to https://seek.com.au/job/12345" | `evaluate-job 12345` |
 | "yes, apply" | `apply-job 12345` |
 | "what did I apply to last month?" | `query-jobs --status applied --since-days 30` |

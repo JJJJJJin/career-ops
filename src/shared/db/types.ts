@@ -12,7 +12,7 @@ export type EligibilityFlag = {
 };
 
 /** Platform a job posting came from. Defaults to 'seek' for legacy rows. */
-export type JobSourceName = 'seek' | 'linkedin' | 'indeed';
+export type JobSourceName = 'seek' | 'linkedin' | 'indeed' | 'builtin';
 
 export type Job = {
   jobId: string;

@@ -52,7 +52,7 @@ export async function evaluateJob(jobIdOrUrl: string, opts: EvaluateOptions = {}
     if (!source) {
       throw new Error(
         `evaluate-job: no job source matches URL "${jobIdOrUrl}". ` +
-          `Supported: SEEK (seek.com.au), LinkedIn (linkedin.com), Indeed (indeed.*).`,
+          `Supported: SEEK (seek.com.au), LinkedIn (linkedin.com), Indeed (indeed.*), Built In (builtin.com).`,
       );
     }
     log.info({ source: source.name, url: jobIdOrUrl }, 'evaluate-job: dispatching to source');
