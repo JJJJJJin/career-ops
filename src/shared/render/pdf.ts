@@ -96,11 +96,6 @@ async function waitForFontsReady(page: Page, timeoutMs: number): Promise<void> {
         f.status === 'loaded' ? Promise.resolve() : f.load().then(() => undefined, () => undefined),
       ),
     );
-    try {
-      await document.fonts.load("400 11px 'DM Sans'");
-    } catch {
-      /* resolved stack may differ on hosts with system fonts; ignore */
-    }
     await document.fonts.ready;
 
     const start = Date.now();
