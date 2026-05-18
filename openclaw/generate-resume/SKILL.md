@@ -1,6 +1,6 @@
 ---
 name: generate-resume
-description: Generate a tailored resume for one job — variant-aware (picks the closest project framing from profile.md without blending), one-page, ATS-friendly. Outputs structured JSON + a markdown view to output/<source>/<company-slug>-<role-slug>/. Use after the user decides to apply (recommendation STRONG, or BORDERLINE override).
+description: Generate a tailored resume for one job — variant-aware (picks the closest project framing from profile.md without blending), includes every project ordered by relevance to the job (most-relevant first), ATS-friendly. Outputs structured JSON + a markdown view to output/<source>/<company-slug>-<role-slug>/. Use after the user decides to apply (recommendation STRONG, or BORDERLINE override).
 ---
 
 # generate-resume

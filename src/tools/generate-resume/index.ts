@@ -24,12 +24,15 @@ const log = createLogger('generate-resume');
 const SYSTEM_PROMPT = `You generate a tailored resume in STRUCTURED JSON for a specific job. Rules:
 
 CONTENT
-- Reorder/emphasize experience and projects most relevant to this job.
+- INCLUDE EVERY project from the candidate profile — never drop a project. The resume must show the candidate's full project history and breadth.
+- ORDER projects by relevance to THIS job, most relevant first. Judge relevance against the JOB SUMMARY's domain (e.g. for an AI/ML role, AI/ML projects lead; for a backend role, backend projects lead). Use recency only as a tiebreaker between similarly-relevant projects.
+- Reorder/emphasize experience the same way — most relevant to this job first.
+- Scale detail by relevance, not by inclusion: highly-relevant projects get 3-5 highlights; less-relevant projects stay (do NOT omit them) but are trimmed to a one-line description + 1-2 highlights so the document stays scannable.
 - Strengthen wording with strong action verbs. Quantify outcomes ONLY when the candidate provided a number.
 - Surface keywordsToEmphasize naturally in highlights — no keyword stuffing.
 - Keep the rewritten summary to 2-3 sentences, focused on this role.
 - DO NOT invent experience, dates, technologies, or metrics not in the candidate profile.
-- Aim for one page worth of content (~400-650 words across all sections combined).
+- The document may run beyond one page since all projects are included — that is expected and acceptable. Keep wording tight so it is comprehensive but not bloated.
 
 VARIANT-AWARE PROJECT FRAMING
 - The candidate may have written multiple framings of the same project for different role targets (e.g. backend version vs AI-engineer version). The CANDIDATE PROFILE MARKDOWN is the AUTHORITATIVE source for project intro paragraphs and highlight phrasing.
