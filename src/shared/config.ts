@@ -95,6 +95,13 @@ export const config = {
     // Filename substring of a resume to keep pinned as the Profile default:
     // never deleted during rotation, re-set as default after each upload.
     protectedResume: (process.env.SEEK_PROTECTED_RESUME ?? '').trim(),
+    // MASTER SAFETY SWITCH. Submission only happens when this is true AND the
+    // run is invoked with --submit. Default false = test mode: every run stops
+    // at the review page and never clicks "Submit application".
+    allowSubmit: parseBool(process.env.SEEK_ALLOW_SUBMIT, false),
+    // Batch caps.
+    maxAppliesPerRun: parseInt10(process.env.SEEK_MAX_APPLIES_PER_RUN, 5),
+    applyMinScore: parseFloat10(process.env.SEEK_APPLY_MIN_SCORE, parseFloat10(process.env.SCORE_THRESHOLD_STRONG, 4.0)),
   },
 
   render: {

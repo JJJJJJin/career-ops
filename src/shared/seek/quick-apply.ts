@@ -165,9 +165,18 @@ export async function runQuickApply(session: BrowserSession, jobId: string, opts
       continue;
     }
     if (step === 'review') {
-      const screenshotPath = await snap(page, jobId, 'review');
-      // Dry-run (dev/test) never submits; real submission is gated for Phase 6.
-      return { stoppedAt: 'review', steps, screenshotPath, answered: lastAnswered };
+      const reviewShot = await snap(page, jobId, 'review');
+      // DOUBLE GATE: submit only when this run is non-dry-run AND the master
+      // switch SEEK_ALLOW_SUBMIT is on. Otherwise stop here — never submit.
+      if (opts.dryRun || !config.seek.allowSubmit) {
+        return { stoppedAt: 'review', steps, screenshotPath: reviewShot, answered: lastAnswered };
+      }
+      log.warn({ jobId }, 'quick-apply: SUBMITTING application (allowSubmit=true, --submit)');
+      await page.getByRole('button', { name: /submit application/i }).first().click({ timeout: 12_000 });
+      await page.waitForLoadState('networkidle', { timeout: 12_000 }).catch(() => {});
+      await page.waitForTimeout(2000);
+      const submittedShot = await snap(page, jobId, 'submitted');
+      return { stoppedAt: 'submitted', steps, screenshotPath: submittedShot, answered: lastAnswered };
     }
     // unknown — capture for diagnosis and stop.
     const screenshotPath = await snap(page, jobId, 'unknown');
