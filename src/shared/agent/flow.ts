@@ -13,7 +13,7 @@ import * as actions from './actions.js';
 import { bumpHit, invalidate, isLocatorValid, readCache, writeCache } from './cache.js';
 import { snapshotDom, screenshot } from './perception.js';
 import { defaultResolver } from './resolver.js';
-import type { ActionDecision, ElementResolver, Flow, FlowStep } from './types.js';
+import type { ActionDecision, ActionType, ElementResolver, Flow, FlowStep } from './types.js';
 
 const log = createLogger('agent:flow');
 
@@ -127,18 +127,18 @@ async function blockHeavyResources(session: BrowserSession): Promise<void> {
   });
 }
 
-async function execute(session: BrowserSession, decision: ActionDecision, locator: string): Promise<void> {
+async function execute(session: BrowserSession, action: ActionType, locator: string, value: string): Promise<void> {
   const { page } = session;
   const loc = page.locator(locator).first();
-  switch (decision.action) {
+  switch (action) {
     case 'click': await actions.click(loc); break;
-    case 'type': await actions.type(loc, decision.value ?? ''); break;
-    case 'select': await actions.selectOption(loc, decision.value ?? ''); break;
+    case 'type': await actions.type(loc, value); break;
+    case 'select': await actions.selectOption(loc, value); break;
     case 'check': await actions.check(loc); break;
     case 'uncheck': await actions.uncheck(loc); break;
-    case 'upload': await actions.uploadFile(loc, decision.value ?? ''); break;
-    case 'press': await actions.press(page, decision.value ?? 'Enter'); break;
-    case 'goto': await actions.goto(page, decision.value ?? ''); break;
+    case 'upload': await actions.uploadFile(loc, value); break;
+    case 'press': await actions.press(page, value || 'Enter'); break;
+    case 'goto': await actions.goto(page, value); break;
     case 'assert': {
       const ok = await actions.assertVisible(loc);
       if (!ok) throw new Error(`assert failed: ${locator} not visible`);
@@ -171,7 +171,9 @@ export async function runFlow(flowId: string, opts: RunFlowOptions = {}): Promis
     let i = 0;
     for (const step of flow.steps) {
       if (i++ >= maxSteps) break;
-      const instruction = substitute(step.instruction, opts.context);
+      // NB: we deliberately do NOT substitute {{tokens}} into the instruction.
+      // The resolver sees (and may cache/log) only the token, never the secret.
+      // Tokens are resolved into the real value at execution time only.
       const snap = await snapshotDom(session.page);
       const pageSig = snap.signature;
 
@@ -185,7 +187,7 @@ export async function runFlow(flowId: string, opts: RunFlowOptions = {}): Promis
           decision = {
             action: cached.action,
             ref: null,
-            value: substitute(cached.value ?? '', opts.context) || cached.value,
+            value: cached.value, // token form; substituted at execution only
             confidence: cached.confidence ?? 1,
             source: 'cache',
           };
@@ -203,7 +205,7 @@ export async function runFlow(flowId: string, opts: RunFlowOptions = {}): Promis
 
       // 2) Cache miss → ask the resolver.
       if (!decision) {
-        const fresh = await resolver.resolve({ flow, step: { ...step, instruction }, snapshot: snap, history });
+        const fresh = await resolver.resolve({ flow, step, snapshot: snap, history });
         decision = fresh;
         if (fresh.action !== 'skip' && fresh.action !== 'done' && fresh.confidence < minConfidence) {
           screenshotPath = await dumpFailure(session, flow.id, step.id);
@@ -231,7 +233,9 @@ export async function runFlow(flowId: string, opts: RunFlowOptions = {}): Promis
           history.push(`step "${step.title}" → skip`);
           continue;
         }
-        await execute(session, decision, execLocator ?? '');
+        // Resolve {{tokens}} into the real value here and nowhere else.
+        const execValue = substitute(decision.value ?? '', opts.context);
+        await execute(session, decision.action, execLocator ?? '', execValue);
         // Cache only what worked, and only when it came fresh from the resolver.
         if (decision.source !== 'cache' && cacheLocator !== undefined) {
           writeCache(flow.id, step.id, pageSig, decision, cacheLocator);

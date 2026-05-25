@@ -37,6 +37,8 @@ dist/
 # ─── Secrets ──────────────────────────────────────────────────────────
 .env
 .env.local
+# Persisted SEEK login session (cookies + localStorage) — never commit.
+data/seek-auth.json
 
 # ─── Node ─────────────────────────────────────────────────────────────
 node_modules/

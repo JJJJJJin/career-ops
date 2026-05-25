@@ -25,6 +25,9 @@ Rules:
 - If the current step is already satisfied, or the flow's goal is reached,
   return action "done".
 - For "type"/"select" include "value" (the text to enter / option to choose).
+- If the step refers to a placeholder token like {{email}} or {{password}},
+  return that token VERBATIM as the "value" (e.g. "{{password}}"). Never guess
+  or echo a real secret — the runner substitutes the token at execution time.
 - For "press" set "value" to the key (e.g. "Enter"); for "goto" set "value" to the URL.
 - For "click"/"check"/"uncheck"/"upload"/"assert" set "ref" and omit "value".
 - Prefer elements whose name matches the step's intent. Be conservative:

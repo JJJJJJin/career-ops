@@ -83,6 +83,17 @@ export const config = {
     slowMoMs: parseInt10(process.env.SLOW_MO_MS, 120),
   },
 
+  seek: {
+    // Credentials for unattended re-login. The persisted session (below) is
+    // tried first; these are the fallback when it has expired. SEEK may still
+    // demand an emailed code/captcha — then a one-off `seek-login --manual`
+    // (headful) establishes the session by hand and caches it.
+    email: process.env.SEEK_EMAIL ?? '',
+    password: process.env.SEEK_PASSWORD ?? '',
+    authStatePath: resolvePath(process.env.SEEK_AUTH_STATE_PATH, 'data/seek-auth.json'),
+    baseUrl: 'https://www.seek.com.au',
+  },
+
   render: {
     // Max time to wait for webfonts to finish loading before snapshotting.
     // Generous default so slow SD-card I/O (Raspberry Pi) doesn't time out.

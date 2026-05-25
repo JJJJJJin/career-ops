@@ -1,5 +1,6 @@
 // Lightweight Playwright launcher. Exports `withBrowser` so callers don't
 // have to track lifecycle.
+import fs from 'node:fs';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { config } from '../config.js';
 import { createLogger } from '../logger.js';
@@ -18,24 +19,43 @@ export type LaunchOptions = {
   userAgent?: string;
   /** Extra Chromium CLI flags (e.g. deterministic font rendering for PDF). */
   args?: string[];
+  /**
+   * Path to a Playwright storageState JSON (cookies + localStorage). Loaded
+   * into the new context when the file exists — this is how a logged-in SEEK
+   * session is reused across runs without logging in every time.
+   */
+  storageStatePath?: string;
 };
 
 const DEFAULT_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 
+// Flags that keep Chromium stable and lean on a Raspberry Pi 4B (small
+// /dev/shm, no discrete GPU). Harmless on a dev laptop, so always applied.
+const PI_SAFE_ARGS = ['--disable-dev-shm-usage', '--disable-gpu', '--no-sandbox', '--disable-setuid-sandbox'];
+
 export async function launchSession(opts: LaunchOptions = {}): Promise<BrowserSession> {
   const headless = opts.headless ?? config.browser.headless;
   const slowMo = opts.slowMoMs ?? config.browser.slowMoMs;
-  log.debug({ headless, slowMo, args: opts.args }, 'browser: launching');
-  const browser = await chromium.launch({ headless, slowMo, args: opts.args });
+  const args = [...PI_SAFE_ARGS, ...(opts.args ?? [])];
+  const hasState = !!opts.storageStatePath && fs.existsSync(opts.storageStatePath);
+  log.debug({ headless, slowMo, args, storageState: hasState }, 'browser: launching');
+  const browser = await chromium.launch({ headless, slowMo, args });
   const context = await browser.newContext({
     userAgent: opts.userAgent ?? DEFAULT_UA,
     viewport: { width: 1366, height: 900 },
     locale: 'en-AU',
     timezoneId: 'Australia/Sydney',
+    ...(hasState ? { storageState: opts.storageStatePath } : {}),
   });
   const page = await context.newPage();
   return { browser, context, page };
+}
+
+/** Persist the context's cookies + localStorage to disk for later reuse. */
+export async function saveStorageState(session: BrowserSession, path: string): Promise<void> {
+  await session.context.storageState({ path });
+  log.debug({ path }, 'browser: storage state saved');
 }
 
 export async function closeSession(session: BrowserSession): Promise<void> {

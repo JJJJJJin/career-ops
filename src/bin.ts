@@ -53,6 +53,9 @@ const COMMANDS: Record<string, () => Promise<{ runCli: (argv: string[]) => Promi
 
   // agent engine
   'run-flow': () => import('./tools/run-flow/cli.js'),
+
+  // SEEK automation
+  'seek-login': () => import('./tools/seek-login/cli.js'),
 };
 
 const TOOL_GROUPS: Array<{ heading: string; tools: string[] }> = [
@@ -65,6 +68,7 @@ const TOOL_GROUPS: Array<{ heading: string; tools: string[] }> = [
   { heading: 'Tracking', tools: ['query-jobs', 'show-job', 'mark-job', 'job-stats', 'render-tracker'] },
   { heading: 'Workflows', tools: ['apply-job', 'daily-pipeline'] },
   { heading: 'Agent engine', tools: ['run-flow'] },
+  { heading: 'SEEK automation', tools: ['seek-login'] },
 ];
 
 function printHelp(): void {
