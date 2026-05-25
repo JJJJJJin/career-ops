@@ -82,8 +82,18 @@ export function loadFlow(id: string): Flow {
 export type RunFlowOptions = {
   /** Navigate here before the first step. */
   startUrl?: string;
-  /** {{key}} substitutions applied to each step's instruction. */
+  /**
+   * Non-secret {{token}} values. Substituted into the instruction the resolver
+   * sees (so the LLM can act on them, e.g. a filename to find) AND into the
+   * action value at execution time.
+   */
   context?: Record<string, string>;
+  /**
+   * Secret {{token}} values (passwords, codes). Substituted ONLY into the
+   * action value at execution — never into the instruction, so they never
+   * reach the LLM, the selector cache, or the history.
+   */
+  secrets?: Record<string, string>;
   /** Reuse an existing session (batch runs share one login). */
   session?: BrowserSession;
   /** Skip the selector cache (force fresh LLM resolution). */
@@ -171,9 +181,9 @@ export async function runFlow(flowId: string, opts: RunFlowOptions = {}): Promis
     let i = 0;
     for (const step of flow.steps) {
       if (i++ >= maxSteps) break;
-      // NB: we deliberately do NOT substitute {{tokens}} into the instruction.
-      // The resolver sees (and may cache/log) only the token, never the secret.
-      // Tokens are resolved into the real value at execution time only.
+      // Non-secret context is substituted into the instruction the resolver
+      // sees; secrets are NOT (they're filled into the value at execution only).
+      const instruction = substitute(step.instruction, opts.context);
       let snap = await snapshotDom(session.page);
       // A near-empty snapshot means the page is mid-load (common right after a
       // navigation — the SPA form hasn't painted). Settle and re-snapshot once
@@ -213,7 +223,7 @@ export async function runFlow(flowId: string, opts: RunFlowOptions = {}): Promis
 
       // 2) Cache miss → ask the resolver.
       if (!decision) {
-        const fresh = await resolver.resolve({ flow, step, snapshot: snap, history });
+        const fresh = await resolver.resolve({ flow, step: { ...step, instruction }, snapshot: snap, history });
         decision = fresh;
         if (fresh.action !== 'skip' && fresh.action !== 'done' && fresh.confidence < minConfidence) {
           screenshotPath = await dumpFailure(session, flow.id, step.id);
@@ -241,8 +251,9 @@ export async function runFlow(flowId: string, opts: RunFlowOptions = {}): Promis
           history.push(`step "${step.title}" → skip`);
           continue;
         }
-        // Resolve {{tokens}} into the real value here and nowhere else.
-        const execValue = substitute(decision.value ?? '', opts.context);
+        // Resolve {{tokens}} into the real value here and nowhere else — both
+        // non-secret context and secrets are available at execution time.
+        const execValue = substitute(decision.value ?? '', { ...opts.context, ...opts.secrets });
         await execute(session, decision.action, execLocator ?? '', execValue);
         // Cache only what worked, and only when it came fresh from the resolver.
         if (decision.source !== 'cache' && cacheLocator !== undefined) {

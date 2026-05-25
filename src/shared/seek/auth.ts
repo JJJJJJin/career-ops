@@ -95,7 +95,7 @@ export async function ensureLoggedIn(session: BrowserSession, opts: { noCache?: 
   const loginRes = await runFlow('seek/login', {
     session,
     startUrl: config.seek.baseUrl,
-    context: { email },
+    secrets: { email },
     noCache: opts.noCache,
   });
   if (!loginRes.completed) {
@@ -119,7 +119,7 @@ export async function ensureLoggedIn(session: BrowserSession, opts: { noCache?: 
     );
   }
 
-  const codeRes = await runFlow('seek/login-code', { session, context: { code: code.trim() }, noCache: opts.noCache });
+  const codeRes = await runFlow('seek/login-code', { session, secrets: { code: code.trim() }, noCache: opts.noCache });
   if (!codeRes.completed) {
     throw new Error(`Code-entry flow stalled at step "${codeRes.failedStep}". Screenshot: ${codeRes.screenshotPath ?? 'n/a'}.`);
   }
