@@ -11,6 +11,7 @@ import path from 'node:path';
 import type { Page } from 'playwright';
 import { config } from '../config.js';
 import { createLogger } from '../logger.js';
+import { journal } from '../agent/journal.js';
 import type { ApplyAnswer } from '../db/types.js';
 
 const log = createLogger('seek:questions');
@@ -146,6 +147,7 @@ export function captureNewQuestions(questions: SeekQuestion[]): SeekQuestion[] {
     .join('');
   fs.appendFileSync(p, blocks);
   log.info({ added: newOnes.length, file: p }, 'captured new employer questions');
+  for (const q of newOnes) journal.note(`captured NEW question (needs your answer): "${q.text}"`, { qid: q.qid, type: q.type });
   return newOnes;
 }
 
@@ -153,10 +155,13 @@ export function captureNewQuestions(questions: SeekQuestion[]): SeekQuestion[] {
 function matchOption(options: string[], answer: string): string | null {
   const a = answer.trim().toLowerCase();
   if (!a) return null;
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return (
-    options.find((o) => o.trim().toLowerCase() === a) ??
-    options.find((o) => o.trim().toLowerCase().includes(a)) ??
-    options.find((o) => o.trim() && a.includes(o.trim().toLowerCase())) ??
+    options.find((o) => o.trim().toLowerCase() === a) ?? // exact
+    options.find((o) => o.trim().toLowerCase().includes(a)) ?? // option contains the answer
+    // answer contains the option AS A WHOLE WORD (so "Typescript" doesn't match
+    // the option "C" via the stray 'c', but "1 year intern" still matches "1 year")
+    options.find((o) => o.trim() && new RegExp(`\\b${esc(o.trim().toLowerCase())}\\b`).test(a)) ??
     null
   );
 }
@@ -225,7 +230,7 @@ export async function answerQuestions(page: Page, questions: SeekQuestion[], gui
       const picked: string[] = [];
       for (const w of wanted) {
         const opt = matchOption(q.options, w);
-        if (opt && (await clickChoiceByLabel(page, q.name, opt, true))) picked.push(opt);
+        if (opt && !picked.includes(opt) && (await clickChoiceByLabel(page, q.name, opt, true))) picked.push(opt);
       }
       if (!picked.length) { unanswered.push(q); continue; }
       answered.push({ question: q.text, answer: picked.join(', '), kind: 'checkbox' });
@@ -237,6 +242,8 @@ export async function answerQuestions(page: Page, questions: SeekQuestion[], gui
     await page.waitForTimeout(250);
   }
 
+  for (const a of answered) journal.note(`Q answered: "${a.question}" → "${a.answer}"`, { kind: a.kind });
+  for (const u of unanswered) journal.fail(`Q has no usable guideline answer: "${u.text}"`, { qid: u.qid, type: u.type });
   return { answered, unanswered };
 }
 

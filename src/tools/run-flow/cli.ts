@@ -1,4 +1,5 @@
 import { runFlow, type RunFlowOptions } from '../../shared/agent/flow.js';
+import { journal } from '../../shared/agent/journal.js';
 
 function parseArgs(argv: string[]): { flowId?: string; json: boolean; opts: RunFlowOptions } {
   let flowId: string | undefined;
@@ -46,7 +47,15 @@ export async function runCli(argv: string[]): Promise<void> {
     process.exit(2);
   }
 
-  const result = await runFlow(flowId, opts);
+  const tracePath = journal.start(`run-flow-${flowId.replace(/\//g, '_')}-${Date.now()}`, { flowId, startUrl: opts.startUrl });
+  let result: Awaited<ReturnType<typeof runFlow>>;
+  try {
+    result = await runFlow(flowId, opts);
+  } catch (err) {
+    journal.end({ aborted: true });
+    throw err;
+  }
+  journal.end({ completed: result.completed, failedStep: result.failedStep });
 
   if (json) {
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
@@ -65,4 +74,5 @@ export async function runCli(argv: string[]): Promise<void> {
     process.stdout.write(`\n  failed at: ${result.failedStep}\n`);
     if (result.screenshotPath) process.stdout.write(`  screenshot: ${result.screenshotPath}\n`);
   }
+  if (tracePath) process.stdout.write(`  trace: ${tracePath}\n`);
 }

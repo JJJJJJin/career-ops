@@ -11,6 +11,7 @@ import { createLogger } from '../logger.js';
 import { slug } from '../slug.js';
 import * as actions from './actions.js';
 import { bumpHit, invalidate, isLocatorValid, readCache, writeCache } from './cache.js';
+import { journal } from './journal.js';
 import { snapshotDom, screenshot } from './perception.js';
 import { defaultResolver } from './resolver.js';
 import type { ActionDecision, ActionType, ElementResolver, Flow, FlowStep } from './types.js';
@@ -229,6 +230,9 @@ export async function runFlow(flowId: string, opts: RunFlowOptions = {}): Promis
           screenshotPath = await dumpFailure(session, flow.id, step.id);
           failedStep = step.id;
           outcomes.push({ step: step.id, action: fresh.action, ref: fresh.ref, source: fresh.source, ok: false, note: `low confidence ${fresh.confidence}` });
+          journal.fail(`step "${step.title}" — resolver not confident enough to act`, {
+            flow: flow.id, action: fresh.action, confidence: fresh.confidence, reasoning: fresh.reasoning, screenshot: screenshotPath,
+          });
           break;
         }
         if (fresh.ref !== null && fresh.ref >= 0 && fresh.ref < snap.nodes.length) {
@@ -243,11 +247,13 @@ export async function runFlow(flowId: string, opts: RunFlowOptions = {}): Promis
       try {
         if (decision.action === 'done') {
           outcomes.push({ step: step.id, action: 'done', ref: null, source: decision.source, ok: true });
+          journal.note(`step "${step.title}" → done`, { flow: flow.id, source: decision.source, reasoning: decision.reasoning });
           completed = true;
           break;
         }
         if (decision.action === 'skip') {
           outcomes.push({ step: step.id, action: 'skip', ref: decision.ref, source: decision.source, ok: true });
+          journal.note(`step "${step.title}" → skip (not applicable)`, { flow: flow.id, source: decision.source, reasoning: decision.reasoning });
           history.push(`step "${step.title}" → skip`);
           continue;
         }
@@ -260,6 +266,9 @@ export async function runFlow(flowId: string, opts: RunFlowOptions = {}): Promis
           writeCache(flow.id, step.id, pageSig, decision, cacheLocator);
         }
         outcomes.push({ step: step.id, action: decision.action, ref: decision.ref, source: decision.source, ok: true });
+        journal.note(`step "${step.title}" → ${decision.action}`, {
+          flow: flow.id, ref: decision.ref, source: decision.source, confidence: decision.confidence, reasoning: decision.reasoning,
+        });
         history.push(`step "${step.title}" → ${decision.action}${decision.value ? ` "${decision.value}"` : ''}`);
         // settle: let any navigation / SPA transition land before next snapshot.
         await session.page.waitForLoadState('domcontentloaded', { timeout: 8000 }).catch(() => {});
@@ -269,6 +278,9 @@ export async function runFlow(flowId: string, opts: RunFlowOptions = {}): Promis
         screenshotPath = await dumpFailure(session, flow.id, step.id);
         failedStep = step.id;
         outcomes.push({ step: step.id, action: decision.action, ref: decision.ref, source: decision.source, ok: false, note: (err as Error).message });
+        journal.fail(`step "${step.title}" — ${decision.action} action failed`, {
+          flow: flow.id, source: decision.source, reasoning: decision.reasoning, error: (err as Error).message, screenshot: screenshotPath,
+        });
         // A cached locator that broke at execution time is stale — drop it.
         if (decision.source === 'cache') invalidate(flow.id, step.id, pageSig);
         break;

@@ -16,6 +16,7 @@ import type { Page } from 'playwright';
 import type { BrowserSession } from '../browser/session.js';
 import { config } from '../config.js';
 import { createLogger } from '../logger.js';
+import { journal } from '../agent/journal.js';
 import { RESUME } from './selectors.js';
 
 const log = createLogger('seek:documents');
@@ -153,6 +154,7 @@ export async function rotateUploadResume(session: BrowserSession, pdfPath: strin
   // Already uploaded under this name? (idempotent re-runs)
   if (resumes.some((r) => r.filename === wanted)) {
     log.info({ wanted }, 'resume already saved — skipping upload');
+    journal.note('resume rotation: already saved, skipped upload', { resume: wanted, saved: resumes.length });
     return { filename: wanted, count: resumes.length };
   }
 
@@ -180,5 +182,6 @@ export async function rotateUploadResume(session: BrowserSession, pdfPath: strin
     log.warn({ wanted, have: resumes.map((r) => r.filename) }, 'uploaded resume not found in list after upload');
   }
   log.info({ filename: wanted, deleted, count: resumes.length }, 'resume rotation complete');
+  journal.note('resume rotation: uploaded', { resume: wanted, deletedOldest: deleted, saved: resumes.length });
   return { filename: wanted, deleted, count: resumes.length };
 }

@@ -13,6 +13,7 @@ import { config } from '../../shared/config.js';
 import { db } from '../../shared/db/store.js';
 import { createLogger } from '../../shared/logger.js';
 import { applicationDir, applicationSlug } from '../../shared/slug.js';
+import { journal } from '../../shared/agent/journal.js';
 import { ensureLoggedIn } from '../../shared/seek/auth.js';
 import { rotateUploadResume } from '../../shared/seek/documents.js';
 import { runQuickApply, type QuickApplyStep } from '../../shared/seek/quick-apply.js';
@@ -37,6 +38,8 @@ export type SeekApplyResult = {
   unanswered?: string[];
   newQuestions?: string[];
   guidelinePath?: string;
+  /** Path to the persistent run trace (reports/agent-runs/…). */
+  journalPath?: string;
 };
 
 function composeCoverLetter(jsonPath: string): string | undefined {
@@ -56,6 +59,8 @@ async function applyOneJob(session: BrowserSession, jobId: string, dryRun: boole
   if (!job) throw new Error(`${jobId} not in DB. Run \`career-ops apply-job ${jobId}\` first.`);
   if (job.source !== 'seek') throw new Error(`seek-apply only supports SEEK jobs (got source=${job.source}).`);
 
+  journal.section(`job ${jobId}: ${job.title ?? ''}`, { company: job.company ?? undefined, applyType: job.applyType ?? 'unknown', dryRun });
+
   const slug = applicationSlug(job.company, job.title);
   const dir = applicationDir(job);
   const resumePdf = path.join(dir, `${slug}-resume.pdf`);
@@ -67,6 +72,7 @@ async function applyOneJob(session: BrowserSession, jobId: string, dryRun: boole
     const url = job.externalApplyUrl ?? job.url;
     db.updateApplicationFields(jobId, { applyMethod: 'external', applyState: 'external_pending', notes: `External apply — submit manually: ${url}` });
     log.info({ jobId, url }, 'external apply — recorded for manual submission');
+    journal.note('external apply — recorded for manual submission', { url });
     return { jobId, title: job.title, applyMethod: 'external', externalUrl: url, note: 'External application — open the URL and submit manually.' };
   }
 
@@ -89,6 +95,7 @@ async function applyOneJob(session: BrowserSession, jobId: string, dryRun: boole
   }
   db.updateApplicationFields(jobId, fields);
   if (result.stoppedAt === 'submitted') db.setStatus(jobId, 'applied', 'auto-applied via SEEK quick apply');
+  journal.note(`outcome: stopped at ${result.stoppedAt}`, { applyState: fields.applyState, applyError: fields.applyError, screenshot: result.screenshotPath });
 
   return {
     jobId,
@@ -110,12 +117,21 @@ function isDryRun(submit?: boolean): boolean {
 export async function seekApply(jobIdOrUrl: string, opts: SeekApplyOptions = {}): Promise<SeekApplyResult> {
   const jobId = extractJobIdFromUrl(jobIdOrUrl);
   const dryRun = isDryRun(opts.submit);
-  const session = await launchSession({ headless: opts.headful ? false : config.browser.headless, storageStatePath: config.seek.authStatePath });
+  const tracePath = journal.start(`seek-apply-${jobId}-${Date.now()}`, { jobId, dryRun, allowSubmit: config.seek.allowSubmit });
   try {
-    await ensureLoggedIn(session);
-    return await applyOneJob(session, jobId, dryRun);
-  } finally {
-    await closeSession(session);
+    const session = await launchSession({ headless: opts.headful ? false : config.browser.headless, storageStatePath: config.seek.authStatePath });
+    try {
+      await ensureLoggedIn(session);
+      const r = await applyOneJob(session, jobId, dryRun);
+      journal.end({ stoppedAt: r.stoppedAt, applyMethod: r.applyMethod });
+      return { ...r, journalPath: tracePath ?? undefined };
+    } finally {
+      await closeSession(session);
+    }
+  } catch (err) {
+    journal.fail('seek-apply aborted', { jobId, error: (err as Error).message });
+    journal.end({ aborted: true });
+    throw err;
   }
 }
 
@@ -125,6 +141,7 @@ export type SeekApplyBatchResult = {
   candidates: number;
   dryRun: boolean;
   results: SeekApplyResult[];
+  journalPath?: string;
 };
 
 /** Auto-apply to eligible STRONG SEEK jobs not yet applied to. One shared login. */
@@ -141,9 +158,14 @@ export async function seekApplyBatch(opts: SeekApplyBatchOptions = {}): Promise<
     .slice(0, maxApplies);
 
   log.info({ candidates: candidates.length, minScore, maxApplies, dryRun }, 'seek-apply batch: starting');
+  const tracePath = journal.start(`seek-apply-batch-${Date.now()}`, { candidates: candidates.length, minScore, maxApplies, dryRun, allowSubmit: config.seek.allowSubmit });
 
   const results: SeekApplyResult[] = [];
-  if (!candidates.length) return { candidates: 0, dryRun, results };
+  if (!candidates.length) {
+    journal.note('no candidates matched (STRONG + eligible + not yet applied)');
+    journal.end({ candidates: 0 });
+    return { candidates: 0, dryRun, results, journalPath: tracePath ?? undefined };
+  }
 
   const session = await launchSession({ headless: opts.headful ? false : config.browser.headless, storageStatePath: config.seek.authStatePath });
   try {
@@ -153,11 +175,13 @@ export async function seekApplyBatch(opts: SeekApplyBatchOptions = {}): Promise<
         results.push(await applyOneJob(session, job.jobId, dryRun));
       } catch (err) {
         log.warn({ jobId: job.jobId, err: (err as Error).message }, 'seek-apply batch: job failed (skipping)');
+        journal.fail(`job ${job.jobId} aborted`, { error: (err as Error).message });
         results.push({ jobId: job.jobId, title: job.title, applyMethod: 'quick', note: `error: ${(err as Error).message}` });
       }
     }
   } finally {
     await closeSession(session);
   }
-  return { candidates: candidates.length, dryRun, results };
+  journal.end({ processed: results.length });
+  return { candidates: candidates.length, dryRun, results, journalPath: tracePath ?? undefined };
 }

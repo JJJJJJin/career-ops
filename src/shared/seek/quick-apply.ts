@@ -13,6 +13,7 @@ import type { BrowserSession } from '../browser/session.js';
 import { config } from '../config.js';
 import { createLogger } from '../logger.js';
 import type { ApplyAnswer } from '../db/types.js';
+import { journal } from '../agent/journal.js';
 import { answerQuestions, captureNewQuestions, extractQuestions, guidelineFile, loadGuideline } from './questions.js';
 
 const log = createLogger('seek:quick-apply');
@@ -67,6 +68,7 @@ async function fillDocuments(page: Page, opts: QuickApplyOptions): Promise<void>
   if (!value) throw new Error(`resume "${opts.resumeFilename}" not found in the apply dropdown`);
   await select.selectOption(value);
   log.info({ resume: opts.resumeFilename }, 'selected saved resume');
+  journal.note('documents: selected resume', { resume: opts.resumeFilename });
 
   // Cover letter: "Write a cover letter" → paste text (no document slot used).
   if (opts.coverLetterText && opts.coverLetterText.trim()) {
@@ -75,8 +77,10 @@ async function fillDocuments(page: Page, opts: QuickApplyOptions): Promise<void>
     await ta.waitFor({ state: 'visible', timeout: 8000 });
     await ta.fill(opts.coverLetterText.trim());
     log.info({ chars: opts.coverLetterText.trim().length }, 'wrote cover letter');
+    journal.note('documents: wrote cover letter', { chars: opts.coverLetterText.trim().length });
   } else {
     await chooseOption(page, /don.?t include a cover letter/i);
+    journal.note('documents: no cover letter (none selected)');
   }
 }
 
@@ -133,6 +137,7 @@ export async function runQuickApply(session: BrowserSession, jobId: string, opts
     const step = await detectStep(page);
     steps.push(step);
     log.info({ jobId, step, i }, 'quick-apply: stage');
+    journal.note(`stage → ${step}`, { jobId });
 
     if (step === 'documents') {
       await fillDocuments(page, opts);
@@ -172,6 +177,7 @@ export async function runQuickApply(session: BrowserSession, jobId: string, opts
         return { stoppedAt: 'review', steps, screenshotPath: reviewShot, answered: lastAnswered };
       }
       log.warn({ jobId }, 'quick-apply: SUBMITTING application (allowSubmit=true, --submit)');
+      journal.note('review → SUBMITTING application (allowSubmit=true, --submit)', { jobId });
       await page.getByRole('button', { name: /submit application/i }).first().click({ timeout: 12_000 });
       await page.waitForLoadState('networkidle', { timeout: 12_000 }).catch(() => {});
       await page.waitForTimeout(2000);

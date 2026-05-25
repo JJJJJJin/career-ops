@@ -50,6 +50,7 @@ export async function runCli(argv: string[]): Promise<void> {
     const ext = r.results.filter((x) => x.applyMethod === 'external').length;
     const needQ = r.results.filter((x) => x.stoppedAt === 'questions').length;
     process.stdout.write(`\nsummary: ${submitted} submitted · ${review} filled/pending · ${ext} external · ${needQ} need answers\n`);
+    if (r.journalPath) process.stdout.write(`trace: ${r.journalPath}\n`);
     return;
   }
 
@@ -60,4 +61,5 @@ export async function runCli(argv: string[]): Promise<void> {
 
   const r = await seekApply(jobIdOrUrl, { submit, headful });
   printOne(r);
+  if (r.journalPath) process.stdout.write(`  trace: ${r.journalPath}\n`);
 }
