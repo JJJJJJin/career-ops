@@ -31,61 +31,72 @@ function guidelinePath(): string {
 }
 
 // ─── extraction ───────────────────────────────────────────────────────────
+// Group by name="questionnaire.<QID>" — robust across control types (select,
+// radio, checkbox, text/number, textarea), unlike scanning id="question-*"
+// containers (which misses checkbox groups and container-is-the-control cases).
 export async function extractQuestions(page: Page): Promise<SeekQuestion[]> {
   return page.evaluate(() => {
     const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
-    const containers = Array.from(document.querySelectorAll('[id^="question-"]'));
-    const byQid = new Map<string, SeekQuestionRaw>();
-
-    type SeekQuestionRaw = { qid: string; name: string; text: string; type: string; options: string[]; currentValue: string };
-
-    const promptText = (container: Element, control: Element): string => {
-      for (const el of [control, container]) {
-        const lb = el.getAttribute('aria-labelledby');
-        if (lb) {
-          const t = lb.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' ');
-          if (norm(t)) return norm(t);
-        }
+    const optLabel = (el: Element): string => {
+      const id = (el as HTMLElement).id;
+      const l = id ? document.querySelector(`label[for="${CSS.escape(id)}"]`) : null;
+      return norm(l?.textContent) || norm(el.getAttribute('value'));
+    };
+    const prompt = (els: Element[], isGroup: boolean): string => {
+      const first = els[0]!;
+      // For single controls (select/text/textarea), the control's own label/aria
+      // IS the question. For radio/checkbox GROUPS it would be an option label,
+      // so skip control-level and use the group's legend/heading instead.
+      if (!isGroup) {
+        const lb = first.getAttribute('aria-labelledby');
+        if (lb) { const t = norm(lb.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' ')); if (t) return t; }
+        const id = first.getAttribute('id');
+        if (id) { const l = document.querySelector(`label[for="${CSS.escape(id)}"]`); if (norm(l?.textContent)) return norm(l?.textContent); }
       }
-      const cid = control.getAttribute('id');
-      if (cid) {
-        const lab = document.querySelector(`label[for="${CSS.escape(cid)}"]`);
-        if (norm(lab?.textContent)) return norm(lab?.textContent);
+      const grp = first.closest('[role="group"], [role="radiogroup"], fieldset');
+      if (grp) {
+        const lb = grp.getAttribute('aria-labelledby');
+        if (lb) { const t = norm(lb.split(/\s+/).map((id) => document.getElementById(id)?.textContent ?? '').join(' ')); if (t) return t; }
+        const lg = grp.querySelector('legend');
+        if (norm(lg?.textContent)) return norm(lg?.textContent);
       }
-      const fs = control.closest('fieldset');
-      if (fs) { const lg = fs.querySelector('legend'); if (norm(lg?.textContent)) return norm(lg?.textContent); }
-      const h = container.querySelector('legend, strong, h3, h4, label');
-      if (norm(h?.textContent)) return norm(h?.textContent);
+      let n: Element | null = first;
+      for (let i = 0; i < 8 && n; i++) { n = n.parentElement; if (!n) break;
+        const h = n.querySelector('legend, strong, h3, h4'); // not <label> — those are option labels
+        if (norm(h?.textContent)) return norm(h?.textContent).slice(0, 160);
+      }
       return '(unknown question)';
     };
 
-    for (const c of containers) {
-      const id = c.getAttribute('id') ?? '';
-      const qid = id.slice('question-'.length);
-      if (!qid || byQid.has(qid)) continue;
+    const controls = Array.from(document.querySelectorAll('[name^="questionnaire"]'));
+    const groups = new Map<string, Element[]>();
+    for (const c of controls) {
+      const name = c.getAttribute('name') ?? '';
+      if (!groups.has(name)) groups.set(name, []);
+      groups.get(name)!.push(c);
+    }
 
-      const select = (c.tagName === 'SELECT' ? c : c.querySelector('select')) as HTMLSelectElement | null;
-      const radios = Array.from(c.querySelectorAll('input[type="radio"]')) as HTMLInputElement[];
-      const textInput = c.querySelector('input[type="text"], input[type="number"], textarea') as HTMLInputElement | null;
-
-      if (select) {
-        byQid.set(qid, {
-          qid, name: select.getAttribute('name') ?? `questionnaire.${qid}`, text: promptText(c, select), type: 'select',
-          options: Array.from(select.options).map((o) => norm(o.textContent)).filter(Boolean),
-          currentValue: norm(select.options[select.selectedIndex]?.textContent),
-        });
-      } else if (radios.length) {
-        const optLabel = (r: HTMLInputElement) => { const l = r.id ? document.querySelector(`label[for="${CSS.escape(r.id)}"]`) : null; return norm(l?.textContent) || norm(r.value); };
-        byQid.set(qid, {
-          qid, name: radios[0]!.getAttribute('name') ?? `questionnaire.${qid}`, text: promptText(c, radios[0]!), type: 'radio',
-          options: radios.map(optLabel), currentValue: norm(optLabel(radios.find((r) => r.checked) ?? ({} as HTMLInputElement))),
-        });
-      } else if (textInput) {
-        const t = textInput.tagName === 'TEXTAREA' ? 'textarea' : (textInput.getAttribute('type') === 'number' ? 'number' : 'text');
-        byQid.set(qid, { qid, name: textInput.getAttribute('name') ?? `questionnaire.${qid}`, text: promptText(c, textInput), type: t, options: [], currentValue: textInput.value });
+    const out: { qid: string; name: string; text: string; type: string; options: string[]; currentValue: string }[] = [];
+    for (const [name, els] of groups) {
+      const qid = name.replace(/^questionnaire\./, '');
+      const first = els[0]!;
+      const tag = first.tagName.toLowerCase();
+      const type = (first.getAttribute('type') ?? '').toLowerCase();
+      if (tag === 'select') {
+        const sel = first as HTMLSelectElement;
+        out.push({ qid, name, text: prompt(els, false), type: 'select', options: Array.from(sel.options).map((o) => norm(o.textContent)).filter(Boolean), currentValue: norm(sel.options[sel.selectedIndex]?.textContent) });
+      } else if (type === 'radio') {
+        const checked = els.find((e) => (e as HTMLInputElement).checked);
+        out.push({ qid, name, text: prompt(els, true), type: 'radio', options: els.map(optLabel), currentValue: checked ? optLabel(checked) : '' });
+      } else if (type === 'checkbox') {
+        const checked = els.filter((e) => (e as HTMLInputElement).checked).map(optLabel);
+        out.push({ qid, name, text: prompt(els, true), type: 'checkbox', options: els.map(optLabel), currentValue: checked.join(' | ') });
+      } else {
+        const t = tag === 'textarea' ? 'textarea' : type === 'number' ? 'number' : 'text';
+        out.push({ qid, name, text: prompt(els, false), type: t, options: [], currentValue: (first as HTMLInputElement).value });
       }
     }
-    return Array.from(byQid.values()) as SeekQuestion[];
+    return out as SeekQuestion[];
   });
 }
 
@@ -150,6 +161,31 @@ function matchOption(options: string[], answer: string): string | null {
   );
 }
 
+/**
+ * Click the radio/checkbox in a name-group whose label matches `optLabel`.
+ * Scoped by the control's name (the checkbox group has no question-<id> wrapper).
+ * For checkboxes pass idempotent=true so an already-checked box isn't toggled off.
+ */
+async function clickChoiceByLabel(page: Page, name: string, optLabel: string, idempotent = false): Promise<boolean> {
+  const found = await page.evaluate(
+    ({ name, optLabel }) => {
+      const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
+      const inputs = Array.from(document.querySelectorAll(`input[name="${name}"]`)) as HTMLInputElement[];
+      for (const inp of inputs) {
+        const l = inp.id ? document.querySelector(`label[for="${CSS.escape(inp.id)}"]`) : null;
+        const text = norm(l?.textContent) || norm(inp.getAttribute('value'));
+        if (text.toLowerCase() === optLabel.toLowerCase()) return { id: inp.id, checked: inp.checked };
+      }
+      return null;
+    },
+    { name, optLabel },
+  );
+  if (!found?.id) return false;
+  if (idempotent && found.checked) return true;
+  await page.locator(`label[for="${found.id}"]`).first().click({ timeout: 6000 });
+  return true;
+}
+
 export type AnswerOutcome = {
   answered: ApplyAnswer[];
   /** Questions with no usable answer in the guideline. */
@@ -181,9 +217,18 @@ export async function answerQuestions(page: Page, questions: SeekQuestion[], gui
     } else if (q.type === 'radio') {
       const opt = matchOption(q.options, desired);
       if (!opt) { unanswered.push(q); continue; }
-      // Click the matching option's label within the group.
-      await page.locator(`[id="question-${q.qid}"] label`, { hasText: opt }).first().click({ timeout: 8000 });
+      await clickChoiceByLabel(page, q.name, opt);
       answered.push({ question: q.text, answer: opt, kind: 'radio' });
+    } else if (q.type === 'checkbox') {
+      // Multi-select: the answer may list several options (| or , separated).
+      const wanted = desired.split(/\s*[|,]\s*/).map((s) => s.trim()).filter(Boolean);
+      const picked: string[] = [];
+      for (const w of wanted) {
+        const opt = matchOption(q.options, w);
+        if (opt && (await clickChoiceByLabel(page, q.name, opt, true))) picked.push(opt);
+      }
+      if (!picked.length) { unanswered.push(q); continue; }
+      answered.push({ question: q.text, answer: picked.join(', '), kind: 'checkbox' });
     } else {
       // text / number / textarea
       await page.locator(`[name="${q.name}"]`).first().fill(desired);

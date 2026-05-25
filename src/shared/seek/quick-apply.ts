@@ -97,8 +97,10 @@ async function detectStep(page: Page): Promise<QuickApplyStep> {
     const btns = Array.from(document.querySelectorAll('button')).map((b) => (b.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase());
     if (btns.some((t) => t.includes('submit application') || t === 'submit')) return 'review';
     const txt = (document.body.innerText ?? '').toLowerCase();
-    // The SEEK-profile step is titled "Update your SEEK Profile".
-    if (/update your seek profile/.test(txt)) return 'profile';
+    // SEEK-profile step: body says "Your SEEK Profile is part of your
+    // application" and offers "Add to Profile" buttons (the nav label
+    // "Update SEEK Profile" is always present, so don't rely on it).
+    if (/seek profile is part of your application/.test(txt) || btns.some((t) => t.includes('add to profile'))) return 'profile';
     // Employer-questions step: the main content holds question fields
     // (selects / radio groups / free-text), none of which appear on the other
     // non-documents stages.
