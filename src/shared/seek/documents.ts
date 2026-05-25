@@ -14,6 +14,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import type { Page } from 'playwright';
 import type { BrowserSession } from '../browser/session.js';
+import { config } from '../config.js';
 import { createLogger } from '../logger.js';
 import { RESUME } from './selectors.js';
 
@@ -84,6 +85,40 @@ async function deleteResume(page: Page, resume: SavedResume): Promise<void> {
   await page.waitForTimeout(1200);
 }
 
+/** Set a saved resume as the Profile default (deterministic). */
+async function makeDefault(page: Page, resume: SavedResume): Promise<void> {
+  log.info({ filename: resume.filename, id: resume.id }, 'pinning resume as default');
+  await page.locator(RESUME.optionsFor(resume.filename)).first().click({ timeout: 10_000 });
+  await page.waitForTimeout(400);
+  await page.locator(RESUME.makeDefaultButton(resume.id)).first().click({ timeout: 8000 });
+  await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(1000);
+}
+
+/** Re-pin the configured protected resume as default, if present and not already. */
+async function repinProtectedDefault(page: Page): Promise<void> {
+  const sub = config.seek.protectedResume.toLowerCase();
+  if (!sub) return;
+  const resumes = await listResumes(page);
+  const target = resumes.find((r) => r.filename.toLowerCase().includes(sub));
+  if (!target) {
+    log.warn({ protectedResume: config.seek.protectedResume }, 'protected resume not found — cannot re-pin default');
+    return;
+  }
+  if (target.isDefault) return;
+  await makeDefault(page, target);
+}
+
+/** Open the manager and set the first resume matching `substring` as default. */
+export async function setDefaultResume(session: BrowserSession, substring: string): Promise<SavedResume | null> {
+  await openManager(session.page);
+  const resumes = await listResumes(session.page);
+  const target = resumes.find((r) => r.filename.toLowerCase().includes(substring.toLowerCase()));
+  if (!target) return null;
+  if (!target.isDefault) await makeDefault(session.page, target);
+  return target;
+}
+
 /** Upload a PDF via the hidden file input (setInputFiles — no native dialog). */
 async function uploadResume(page: Page, pdfPath: string): Promise<void> {
   const input = page.locator(RESUME.fileInput).first();
@@ -121,12 +156,16 @@ export async function rotateUploadResume(session: BrowserSession, pdfPath: strin
     return { filename: wanted, count: resumes.length };
   }
 
+  const protectedSub = config.seek.protectedResume.toLowerCase();
   let deleted: string | undefined;
   if (resumes.length >= RESUME.limit) {
-    const nonDefault = resumes.filter((r) => !r.isDefault);
-    const victim = nonDefault[nonDefault.length - 1]; // oldest in display order
+    // Never delete the Default or the configured protected resume.
+    const eligible = resumes.filter(
+      (r) => !r.isDefault && !(protectedSub && r.filename.toLowerCase().includes(protectedSub)),
+    );
+    const victim = eligible[eligible.length - 1]; // oldest in display order
     if (!victim) {
-      throw new Error('resume list is full but only the Default remains — refusing to delete it. Free a slot manually.');
+      throw new Error('resume list is full but every resume is the Default or protected — free a slot manually.');
     }
     await deleteResume(page, victim);
     deleted = victim.filename;
@@ -134,6 +173,8 @@ export async function rotateUploadResume(session: BrowserSession, pdfPath: strin
   }
 
   await uploadResume(page, pdfPath);
+  // SEEK makes the newest upload the Default — restore the protected one.
+  await repinProtectedDefault(page);
   resumes = await listResumes(page);
   if (!resumes.some((r) => r.filename === wanted)) {
     log.warn({ wanted, have: resumes.map((r) => r.filename) }, 'uploaded resume not found in list after upload');

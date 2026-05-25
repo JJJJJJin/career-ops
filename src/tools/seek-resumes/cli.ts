@@ -1,7 +1,7 @@
 import { closeSession, launchSession } from '../../shared/browser/session.js';
 import { config } from '../../shared/config.js';
 import { ensureLoggedIn } from '../../shared/seek/auth.js';
-import { getSavedResumes, rotateUploadResume } from '../../shared/seek/documents.js';
+import { getSavedResumes, rotateUploadResume, setDefaultResume } from '../../shared/seek/documents.js';
 import { RESUME } from '../../shared/seek/selectors.js';
 
 export async function runCli(argv: string[]): Promise<void> {
@@ -37,7 +37,22 @@ export async function runCli(argv: string[]): Promise<void> {
       return;
     }
 
-    console.error(`Unknown subcommand "${sub}". Usage: career-ops seek-resumes [list | rotate <pdfPath>] [--headful]`);
+    if (sub === 'set-default') {
+      const substring = argv.find((a, i) => i > 0 && !a.startsWith('--'));
+      if (!substring) {
+        console.error('Usage: career-ops seek-resumes set-default <filenameSubstring> [--headful]');
+        process.exit(2);
+      }
+      const r = await setDefaultResume(session, substring);
+      if (r) process.stdout.write(`  ★ set default: ${r.filename}\n`);
+      else {
+        process.stdout.write(`  no saved resumé matched "${substring}"\n`);
+        process.exit(1);
+      }
+      return;
+    }
+
+    console.error(`Unknown subcommand "${sub}". Usage: career-ops seek-resumes [list | rotate <pdfPath> | set-default <substring>] [--headful]`);
     process.exit(2);
   } finally {
     await closeSession(session);

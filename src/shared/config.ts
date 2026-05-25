@@ -92,6 +92,9 @@ export const config = {
     password: process.env.SEEK_PASSWORD ?? '',
     authStatePath: resolvePath(process.env.SEEK_AUTH_STATE_PATH, 'data/seek-auth.json'),
     baseUrl: 'https://www.seek.com.au',
+    // Filename substring of a resume to keep pinned as the Profile default:
+    // never deleted during rotation, re-set as default after each upload.
+    protectedResume: (process.env.SEEK_PROTECTED_RESUME ?? '').trim(),
   },
 
   render: {

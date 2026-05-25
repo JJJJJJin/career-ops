@@ -59,6 +59,8 @@ export const RESUME = {
   optionsFor: (filename: string) => `[aria-label="Options for ${filename}"]`,
   /** "Delete" item inside an opened ⋮ menu, by resume id. */
   deleteButton: (id: string) => `[data-automation="delete-resume-button-${id}"]`,
+  /** "Make default" item inside an opened ⋮ menu, by resume id. */
+  makeDefaultButton: (id: string) => `[data-automation="resume-make-default-${id}"]`,
   /** "Done" closes the manager. */
   done: '[data-automation="manage-resume-done"]',
 } as const;
