@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { db } from '../../shared/db/store.js';
-import { applicationDir, applicationSlug } from '../../shared/slug.js';
+import { applicationDir, artefactBase } from '../../shared/slug.js';
 import { createLogger } from '../../shared/logger.js';
 import { escapeHtml, inlineMd, renderTemplate } from '../../shared/render/template.js';
 import { loadTemplate, renderHtmlToPdf } from '../../shared/render/pdf.js';
@@ -56,7 +56,7 @@ export async function renderCompanyBriefPdf(jobId: string, opts: RenderCompanyBr
   const job = db.getJob(jobId);
   if (!job) throw new Error(`render-company-brief-pdf: ${jobId} not in DB.`);
 
-  const slug = applicationSlug(job.company, job.title);
+  const slug = artefactBase(job);
   const outputDir = applicationDir(job);
   const jsonPath = path.join(outputDir, `${slug}-company_brief.json`);
   if (!fs.existsSync(jsonPath)) {

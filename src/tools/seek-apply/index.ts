@@ -12,20 +12,30 @@ import { closeSession, launchSession, type BrowserSession } from '../../shared/b
 import { config } from '../../shared/config.js';
 import { db } from '../../shared/db/store.js';
 import { createLogger } from '../../shared/logger.js';
-import { applicationDir, applicationSlug } from '../../shared/slug.js';
+import { applicationDir, artefactBase } from '../../shared/slug.js';
 import { journal } from '../../shared/agent/journal.js';
 import { ensureLoggedIn } from '../../shared/seek/auth.js';
 import { rotateUploadResume } from '../../shared/seek/documents.js';
-import { runQuickApply, type QuickApplyStep } from '../../shared/seek/quick-apply.js';
+import { runQuickApply, type QuickApplyStep, type SubmitMode } from '../../shared/seek/quick-apply.js';
 import { extractJobIdFromUrl } from '../seek-extract/index.js';
+import { applyJob } from '../../workflows/apply-job.js';
 
 const log = createLogger('seek-apply');
 
 export type SeekApplyOptions = {
-  /** Opt in to actually submitting. Still requires SEEK_ALLOW_SUBMIT=true. */
+  /** Auto-submit without asking. Still requires SEEK_ALLOW_SUBMIT=true. */
   submit?: boolean;
+  /** Pause at the review page and ask before submitting each job. */
+  confirm?: boolean;
   headful?: boolean;
 };
+
+/** dry (default) → confirm (--confirm) → auto (--submit + SEEK_ALLOW_SUBMIT). */
+function resolveSubmitMode(opts: { submit?: boolean; confirm?: boolean }): SubmitMode {
+  if (opts.confirm) return 'confirm';
+  if (opts.submit && config.seek.allowSubmit) return 'auto';
+  return 'dry';
+}
 
 export type SeekApplyResult = {
   jobId: string;
@@ -54,14 +64,14 @@ function composeCoverLetter(jsonPath: string): string | undefined {
 }
 
 /** Core per-job flow given an already-logged-in session. */
-async function applyOneJob(session: BrowserSession, jobId: string, dryRun: boolean): Promise<SeekApplyResult> {
+async function applyOneJob(session: BrowserSession, jobId: string, submitMode: SubmitMode): Promise<SeekApplyResult> {
   const job = db.getJob(jobId);
   if (!job) throw new Error(`${jobId} not in DB. Run \`career-ops apply-job ${jobId}\` first.`);
   if (job.source !== 'seek') throw new Error(`seek-apply only supports SEEK jobs (got source=${job.source}).`);
 
-  journal.section(`job ${jobId}: ${job.title ?? ''}`, { company: job.company ?? undefined, applyType: job.applyType ?? 'unknown', dryRun });
+  journal.section(`job ${jobId}: ${job.title ?? ''}`, { company: job.company ?? undefined, applyType: job.applyType ?? 'unknown', submitMode });
 
-  const slug = applicationSlug(job.company, job.title);
+  const slug = artefactBase(job);
   const dir = applicationDir(job);
   const resumePdf = path.join(dir, `${slug}-resume.pdf`);
   if (!fs.existsSync(resumePdf)) throw new Error(`resume PDF missing: ${resumePdf}. Run \`career-ops apply-job ${jobId}\` first.`);
@@ -79,7 +89,7 @@ async function applyOneJob(session: BrowserSession, jobId: string, dryRun: boole
   const { filename, deleted } = await rotateUploadResume(session, resumePdf);
   if (deleted) log.info({ jobId, deleted }, 'rotated out oldest resume to free a slot');
 
-  const result = await runQuickApply(session, jobId, { resumeFilename: filename, coverLetterText: coverText, dryRun });
+  const result = await runQuickApply(session, jobId, { resumeFilename: filename, coverLetterText: coverText, submitMode, jobTitle: job.title ?? undefined });
   log.info({ jobId, stoppedAt: result.stoppedAt, answered: result.answered?.length ?? 0, unanswered: result.unanswered?.length ?? 0 }, 'quick-apply finished');
 
   // Record outcome. applied_at + status=applied ONLY on a real submission.
@@ -109,20 +119,15 @@ async function applyOneJob(session: BrowserSession, jobId: string, dryRun: boole
   };
 }
 
-function isDryRun(submit?: boolean): boolean {
-  // Never submit unless BOTH the per-run flag and the master switch are set.
-  return !(submit && config.seek.allowSubmit);
-}
-
 export async function seekApply(jobIdOrUrl: string, opts: SeekApplyOptions = {}): Promise<SeekApplyResult> {
   const jobId = extractJobIdFromUrl(jobIdOrUrl);
-  const dryRun = isDryRun(opts.submit);
-  const tracePath = journal.start(`seek-apply-${jobId}-${Date.now()}`, { jobId, dryRun, allowSubmit: config.seek.allowSubmit });
+  const submitMode = resolveSubmitMode(opts);
+  const tracePath = journal.start(`seek-apply-${jobId}-${Date.now()}`, { jobId, submitMode, allowSubmit: config.seek.allowSubmit });
   try {
     const session = await launchSession({ headless: opts.headful ? false : config.browser.headless, storageStatePath: config.seek.authStatePath });
     try {
       await ensureLoggedIn(session);
-      const r = await applyOneJob(session, jobId, dryRun);
+      const r = await applyOneJob(session, jobId, submitMode);
       journal.end({ stoppedAt: r.stoppedAt, applyMethod: r.applyMethod });
       return { ...r, journalPath: tracePath ?? undefined };
     } finally {
@@ -148,7 +153,8 @@ export type SeekApplyBatchResult = {
 export async function seekApplyBatch(opts: SeekApplyBatchOptions = {}): Promise<SeekApplyBatchResult> {
   const minScore = opts.minScore ?? config.seek.applyMinScore;
   const maxApplies = opts.maxApplies ?? config.seek.maxAppliesPerRun;
-  const dryRun = isDryRun(opts.submit);
+  const submitMode = resolveSubmitMode(opts);
+  const dryRun = submitMode === 'dry';
 
   const candidates = db
     .listJobs({ source: 'seek', eligibleOnly: true, minScore })
@@ -157,8 +163,8 @@ export async function seekApplyBatch(opts: SeekApplyBatchOptions = {}): Promise<
     .filter(({ application }) => application?.applyState !== 'submitted')
     .slice(0, maxApplies);
 
-  log.info({ candidates: candidates.length, minScore, maxApplies, dryRun }, 'seek-apply batch: starting');
-  const tracePath = journal.start(`seek-apply-batch-${Date.now()}`, { candidates: candidates.length, minScore, maxApplies, dryRun, allowSubmit: config.seek.allowSubmit });
+  log.info({ candidates: candidates.length, minScore, maxApplies, submitMode }, 'seek-apply batch: starting');
+  const tracePath = journal.start(`seek-apply-batch-${Date.now()}`, { candidates: candidates.length, minScore, maxApplies, submitMode, allowSubmit: config.seek.allowSubmit });
 
   const results: SeekApplyResult[] = [];
   if (!candidates.length) {
@@ -172,7 +178,7 @@ export async function seekApplyBatch(opts: SeekApplyBatchOptions = {}): Promise<
     await ensureLoggedIn(session);
     for (const { job } of candidates) {
       try {
-        results.push(await applyOneJob(session, job.jobId, dryRun));
+        results.push(await applyOneJob(session, job.jobId, submitMode));
       } catch (err) {
         log.warn({ jobId: job.jobId, err: (err as Error).message }, 'seek-apply batch: job failed (skipping)');
         journal.fail(`job ${job.jobId} aborted`, { error: (err as Error).message });
@@ -184,4 +190,64 @@ export async function seekApplyBatch(opts: SeekApplyBatchOptions = {}): Promise<
   }
   journal.end({ processed: results.length });
   return { candidates: candidates.length, dryRun, results, journalPath: tracePath ?? undefined };
+}
+
+export type FileApplyResult = SeekApplyResult & { url: string; prep?: 'ready' | 'skipped-eligibility' | 'prepare-failed' };
+export type SeekApplyFileResult = { urls: number; submitMode: SubmitMode; results: FileApplyResult[]; journalPath?: string };
+
+/** Read a .txt of SEEK job URLs (one per line; # comments allowed) and, for each:
+ *  generate artefacts (apply-job) then quick-apply. Externals are recorded for
+ *  manual submission. One shared login for all the quick-applies. */
+export async function seekApplyFromFile(filePath: string, opts: SeekApplyOptions = {}): Promise<SeekApplyFileResult> {
+  if (!fs.existsSync(filePath)) throw new Error(`URL list not found: ${filePath}`);
+  const urls = fs
+    .readFileSync(filePath, 'utf-8')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith('#'));
+  const submitMode = resolveSubmitMode(opts);
+  const tracePath = journal.start(`seek-apply-file-${Date.now()}`, { file: filePath, urls: urls.length, submitMode, allowSubmit: config.seek.allowSubmit });
+  const results: FileApplyResult[] = [];
+
+  // Phase 1: generate tailored artefacts per URL (apply-job uses its own
+  // transient browsers for extract + PDF render; no login needed).
+  const ready: Array<{ url: string; jobId: string; title?: string }> = [];
+  for (const url of urls) {
+    journal.section(`prepare ${url}`);
+    try {
+      const r = await applyJob(url, { email: false });
+      if (r.skippedDueToEligibility) {
+        journal.note('skipped — eligibility blocked');
+        results.push({ url, jobId: r.jobId, applyMethod: 'quick', prep: 'skipped-eligibility', note: 'eligibility blocked — not auto-applied' });
+        continue;
+      }
+      journal.note('artefacts ready', { jobId: r.jobId });
+      ready.push({ url, jobId: r.jobId });
+    } catch (err) {
+      journal.fail('prepare failed', { url, error: (err as Error).message });
+      results.push({ url, jobId: url, applyMethod: 'quick', prep: 'prepare-failed', note: `prepare failed: ${(err as Error).message}` });
+    }
+  }
+
+  // Phase 2: one shared login; quick-apply each prepared job.
+  if (ready.length) {
+    const session = await launchSession({ headless: opts.headful ? false : config.browser.headless, storageStatePath: config.seek.authStatePath });
+    try {
+      await ensureLoggedIn(session);
+      for (const { url, jobId } of ready) {
+        try {
+          const r = await applyOneJob(session, jobId, submitMode);
+          results.push({ ...r, url, prep: 'ready' });
+        } catch (err) {
+          journal.fail(`apply failed ${jobId}`, { error: (err as Error).message });
+          results.push({ url, jobId, applyMethod: 'quick', prep: 'ready', note: `apply failed: ${(err as Error).message}` });
+        }
+      }
+    } finally {
+      await closeSession(session);
+    }
+  }
+
+  journal.end({ urls: urls.length, applied: results.length });
+  return { urls: urls.length, submitMode, results, journalPath: tracePath ?? undefined };
 }

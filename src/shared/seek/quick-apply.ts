@@ -14,17 +14,27 @@ import { config } from '../config.js';
 import { createLogger } from '../logger.js';
 import type { ApplyAnswer } from '../db/types.js';
 import { journal } from '../agent/journal.js';
+import { awaitHumanInput } from '../agent/human-input.js';
 import { answerQuestions, captureNewQuestions, extractQuestions, guidelineFile, loadGuideline } from './questions.js';
 
 const log = createLogger('seek:quick-apply');
 
 export type QuickApplyStep = 'documents' | 'questions' | 'profile' | 'review' | 'submitted' | 'unknown';
 
+/**
+ * What to do at the review page:
+ *   'dry'     — stop, never submit (default / test mode)
+ *   'confirm' — pause and ask the human (yes/no) before submitting
+ *   'auto'    — submit without asking (requires SEEK_ALLOW_SUBMIT)
+ */
+export type SubmitMode = 'dry' | 'confirm' | 'auto';
+
 export type QuickApplyOptions = {
   resumeFilename: string;
   coverLetterText?: string;
-  /** Stop at the review page instead of submitting. Phase 4 is always dry-run. */
-  dryRun?: boolean;
+  submitMode?: SubmitMode;
+  /** Job title, used in the confirm prompt so you know which job you're approving. */
+  jobTitle?: string;
 };
 
 export type QuickApplyResult = {
@@ -171,13 +181,36 @@ export async function runQuickApply(session: BrowserSession, jobId: string, opts
     }
     if (step === 'review') {
       const reviewShot = await snap(page, jobId, 'review');
-      // DOUBLE GATE: submit only when this run is non-dry-run AND the master
-      // switch SEEK_ALLOW_SUBMIT is on. Otherwise stop here — never submit.
-      if (opts.dryRun || !config.seek.allowSubmit) {
-        return { stoppedAt: 'review', steps, screenshotPath: reviewShot, answered: lastAnswered };
+      const mode = opts.submitMode ?? 'dry';
+      const reviewResult: QuickApplyResult = { stoppedAt: 'review', steps, screenshotPath: reviewShot, answered: lastAnswered };
+
+      // 'dry' — never submit.
+      if (mode === 'dry') return reviewResult;
+
+      // 'auto' — submit unattended, but only if the master switch is on.
+      if (mode === 'auto') {
+        if (!config.seek.allowSubmit) {
+          journal.note('review → NOT submitting (auto mode but SEEK_ALLOW_SUBMIT is off)', { jobId });
+          return reviewResult;
+        }
       }
-      log.warn({ jobId }, 'quick-apply: SUBMITTING application (allowSubmit=true, --submit)');
-      journal.note('review → SUBMITTING application (allowSubmit=true, --submit)', { jobId });
+
+      // 'confirm' — pause for the human. The headful browser is parked on the
+      // review page so they can eyeball the resume/cover/answers, then reply.
+      if (mode === 'confirm') {
+        const answer = await awaitHumanInput({
+          label: `Review "${opts.jobTitle ?? jobId}" (job ${jobId}) — resume, cover letter and answers are filled in. Reply "yes" to SUBMIT, anything else to skip. Review screenshot: ${reviewShot}`,
+          kind: 'text',
+        });
+        if (!/^\s*(y|yes)\s*$/i.test(answer)) {
+          journal.note('review → human declined submit; left filled, not submitted', { jobId, answer });
+          return reviewResult;
+        }
+        journal.note('review → human confirmed submit', { jobId });
+      }
+
+      log.warn({ jobId, mode }, 'quick-apply: SUBMITTING application');
+      journal.note(`review → SUBMITTING application (${mode})`, { jobId });
       await page.getByRole('button', { name: /submit application/i }).first().click({ timeout: 12_000 });
       await page.waitForLoadState('networkidle', { timeout: 12_000 }).catch(() => {});
       await page.waitForTimeout(2000);
