@@ -50,6 +50,9 @@ const COMMANDS: Record<string, () => Promise<{ runCli: (argv: string[]) => Promi
   // workflows
   'apply-job': () => import('./workflows/apply-job.js'),
   'daily-pipeline': () => import('./workflows/daily-pipeline.js'),
+
+  // agent engine
+  'run-flow': () => import('./tools/run-flow/cli.js'),
 };
 
 const TOOL_GROUPS: Array<{ heading: string; tools: string[] }> = [
@@ -61,6 +64,7 @@ const TOOL_GROUPS: Array<{ heading: string; tools: string[] }> = [
   { heading: 'Delivery', tools: ['send-files'] },
   { heading: 'Tracking', tools: ['query-jobs', 'show-job', 'mark-job', 'job-stats', 'render-tracker'] },
   { heading: 'Workflows', tools: ['apply-job', 'daily-pipeline'] },
+  { heading: 'Agent engine', tools: ['run-flow'] },
 ];
 
 function printHelp(): void {

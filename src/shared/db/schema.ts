@@ -56,6 +56,24 @@ CREATE TABLE IF NOT EXISTS scan_runs (
   jobs_found  INTEGER NOT NULL DEFAULT 0,
   jobs_new    INTEGER NOT NULL DEFAULT 0
 );
+
+-- Agent engine: learned element selectors, keyed by (flow, step, page signature).
+-- A cache hit lets the flow runner skip the LLM resolver entirely — the main
+-- performance lever on a Raspberry Pi. Edit a flow step's heading → its step_id
+-- changes → the stale entry is naturally bypassed.
+CREATE TABLE IF NOT EXISTS selector_cache (
+  flow_id     TEXT NOT NULL,
+  step_id     TEXT NOT NULL,
+  page_sig    TEXT NOT NULL,
+  action      TEXT NOT NULL,
+  locator     TEXT,
+  value_tmpl  TEXT,
+  confidence  REAL,
+  hits        INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (flow_id, step_id, page_sig)
+);
 `;
 
 export const SCHEMA_INDEXES_SQL = `

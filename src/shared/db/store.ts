@@ -14,6 +14,7 @@ import type {
   JobSummary,
   MatchAnalysis,
   ScanRunRow,
+  SelectorCacheEntry,
 } from './types.js';
 
 const log = createLogger('db');
@@ -348,6 +349,70 @@ class DbStore {
       const application = hasApp ? rowToApplication(row as AppRow) : null;
       return { job, application };
     });
+  }
+
+  // ─── selector cache (agent engine) ───────────────────────────────────
+  getSelectorCache(flowId: string, stepId: string, pageSig: string): SelectorCacheEntry | null {
+    const row = this.db
+      .prepare(`SELECT * FROM selector_cache WHERE flow_id = ? AND step_id = ? AND page_sig = ?`)
+      .get(flowId, stepId, pageSig) as
+      | {
+          flow_id: string;
+          step_id: string;
+          page_sig: string;
+          action: string;
+          locator: string | null;
+          value_tmpl: string | null;
+          confidence: number | null;
+          hits: number;
+        }
+      | undefined;
+    if (!row) return null;
+    return {
+      flowId: row.flow_id,
+      stepId: row.step_id,
+      pageSig: row.page_sig,
+      action: row.action,
+      locator: row.locator,
+      valueTmpl: row.value_tmpl,
+      confidence: row.confidence,
+      hits: row.hits,
+    };
+  }
+
+  putSelectorCache(entry: Omit<SelectorCacheEntry, 'hits'>): void {
+    this.db
+      .prepare(`
+        INSERT INTO selector_cache (flow_id, step_id, page_sig, action, locator, value_tmpl, confidence, hits, created_at, updated_at)
+        VALUES (@flow_id, @step_id, @page_sig, @action, @locator, @value_tmpl, @confidence, 0, datetime('now'), datetime('now'))
+        ON CONFLICT(flow_id, step_id, page_sig) DO UPDATE SET
+          action = excluded.action,
+          locator = excluded.locator,
+          value_tmpl = excluded.value_tmpl,
+          confidence = excluded.confidence,
+          updated_at = datetime('now')
+      `)
+      .run({
+        flow_id: entry.flowId,
+        step_id: entry.stepId,
+        page_sig: entry.pageSig,
+        action: entry.action,
+        locator: entry.locator,
+        value_tmpl: entry.valueTmpl,
+        confidence: entry.confidence,
+      });
+  }
+
+  bumpSelectorCacheHit(flowId: string, stepId: string, pageSig: string): void {
+    this.db
+      .prepare(`UPDATE selector_cache SET hits = hits + 1, updated_at = datetime('now') WHERE flow_id = ? AND step_id = ? AND page_sig = ?`)
+      .run(flowId, stepId, pageSig);
+  }
+
+  deleteSelectorCache(flowId: string, stepId: string, pageSig: string): void {
+    this.db
+      .prepare(`DELETE FROM selector_cache WHERE flow_id = ? AND step_id = ? AND page_sig = ?`)
+      .run(flowId, stepId, pageSig);
   }
 
   // ─── scan history ────────────────────────────────────────────────────

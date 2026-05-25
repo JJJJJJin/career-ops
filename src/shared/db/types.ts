@@ -105,3 +105,19 @@ export type ScanRunRow = {
   jobsFound: number;
   jobsNew: number;
 };
+
+/**
+ * A learned element selector for one flow step on one page shape. `action` is
+ * stored as plain text (the agent layer owns the ActionType union); the DB
+ * stays decoupled from the agent module.
+ */
+export type SelectorCacheEntry = {
+  flowId: string;
+  stepId: string;
+  pageSig: string;
+  action: string;
+  locator: string | null;
+  valueTmpl: string | null;
+  confidence: number | null;
+  hits: number;
+};
