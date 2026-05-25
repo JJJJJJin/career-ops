@@ -20,6 +20,11 @@ export async function runCli(argv: string[]): Promise<void> {
   }
   process.stdout.write(`\n✔ ${r.jobId} — quick-apply dry-run stopped at: ${r.stoppedAt}\n`);
   if (r.screenshotPath) process.stdout.write(`   screenshot: ${r.screenshotPath}\n`);
-  if (r.stoppedAt === 'review') process.stdout.write(`   (documents filled; review page reached — not submitted)\n`);
-  else if (r.stoppedAt === 'questions') process.stdout.write(`   (reached employer questions — Phase 5 will answer these)\n`);
+  if (r.stoppedAt === 'review') process.stdout.write(`   (documents + questions filled; review page reached — NOT submitted)\n`);
+  else if (r.stoppedAt === 'questions') {
+    const n = r.unanswered?.length ?? 0;
+    process.stdout.write(`   ${n} employer question(s) have no answer in your guideline:\n`);
+    for (const q of r.unanswered ?? []) process.stdout.write(`     • ${q}\n`);
+    if (r.guidelinePath) process.stdout.write(`\n   Fill the \`answer:\` lines in: ${r.guidelinePath}\n   then re-run. (Newly captured this run: ${r.newQuestions?.length ?? 0})\n`);
+  }
 }

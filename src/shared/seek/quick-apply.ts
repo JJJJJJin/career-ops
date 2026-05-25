@@ -12,6 +12,8 @@ import type { Page } from 'playwright';
 import type { BrowserSession } from '../browser/session.js';
 import { config } from '../config.js';
 import { createLogger } from '../logger.js';
+import type { ApplyAnswer } from '../db/types.js';
+import { answerQuestions, captureNewQuestions, extractQuestions, guidelineFile, loadGuideline } from './questions.js';
 
 const log = createLogger('seek:quick-apply');
 
@@ -28,6 +30,14 @@ export type QuickApplyResult = {
   stoppedAt: QuickApplyStep;
   steps: string[];
   screenshotPath?: string;
+  /** Employer-question answers filled from the guideline (audit trail). */
+  answered?: ApplyAnswer[];
+  /** Question prompts with no usable guideline answer (run stopped). */
+  unanswered?: string[];
+  /** QIDs of questions newly captured into the guideline this run. */
+  newQuestions?: string[];
+  /** Path to the guideline file the user edits. */
+  guidelinePath?: string;
 };
 
 function applyUrl(jobId: string): string {
@@ -116,6 +126,7 @@ export async function runQuickApply(session: BrowserSession, jobId: string, opts
   // Walk the wizard. Documents handled deterministically; profile skipped;
   // questions deferred to Phase 5; review is where dry-run stops.
   const maxStages = 6;
+  let lastAnswered: ApplyAnswer[] = [];
   for (let i = 0; i < maxStages; i++) {
     const step = await detectStep(page);
     steps.push(step);
@@ -131,18 +142,35 @@ export async function runQuickApply(session: BrowserSession, jobId: string, opts
       continue;
     }
     if (step === 'questions') {
-      const screenshotPath = await snap(page, jobId, 'questions');
-      return { stoppedAt: 'questions', steps, screenshotPath }; // Phase 5
+      const questions = await extractQuestions(page);
+      const captured = captureNewQuestions(questions); // accumulate for the user to answer
+      const { answered, unanswered } = await answerQuestions(page, questions, loadGuideline());
+      log.info({ jobId, total: questions.length, answered: answered.length, unanswered: unanswered.length, captured: captured.length }, 'employer questions processed');
+      if (unanswered.length > 0) {
+        // Don't guess. Capture + stop so the user can fill the guideline.
+        const screenshotPath = await snap(page, jobId, 'questions');
+        return {
+          stoppedAt: 'questions', steps, screenshotPath, answered,
+          unanswered: unanswered.map((q) => q.text),
+          newQuestions: captured.map((q) => q.qid),
+          guidelinePath: guidelineFile(),
+        };
+      }
+      // All answered from the guideline — advance.
+      await clickContinue(page);
+      // Carry the audit forward by stashing on the page-less result via closure.
+      lastAnswered = answered;
+      continue;
     }
     if (step === 'review') {
       const screenshotPath = await snap(page, jobId, 'review');
-      // Phase 4 never submits; Phase 6 will when !dryRun.
-      return { stoppedAt: 'review', steps, screenshotPath };
+      // Dry-run (dev/test) never submits; real submission is gated for Phase 6.
+      return { stoppedAt: 'review', steps, screenshotPath, answered: lastAnswered };
     }
     // unknown — capture for diagnosis and stop.
     const screenshotPath = await snap(page, jobId, 'unknown');
-    return { stoppedAt: 'unknown', steps, screenshotPath };
+    return { stoppedAt: 'unknown', steps, screenshotPath, answered: lastAnswered };
   }
   const screenshotPath = await snap(page, jobId, 'maxstages');
-  return { stoppedAt: 'unknown', steps, screenshotPath };
+  return { stoppedAt: 'unknown', steps, screenshotPath, answered: lastAnswered };
 }

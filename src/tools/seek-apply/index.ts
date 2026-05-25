@@ -28,6 +28,9 @@ export type SeekApplyResult = {
   screenshotPath?: string;
   externalUrl?: string;
   note?: string;
+  unanswered?: string[];
+  newQuestions?: string[];
+  guidelinePath?: string;
 };
 
 /** Compose the cover-letter body for SEEK's textarea (no name/contact header). */
@@ -82,12 +85,18 @@ export async function seekApply(jobIdOrUrl: string, opts: SeekApplyOptions = {})
     if (deleted) log.info({ deleted }, 'rotated out oldest resume to free a slot');
 
     const result = await runQuickApply(session, jobId, { resumeFilename: filename, coverLetterText: coverText, dryRun });
-    log.info({ jobId, stoppedAt: result.stoppedAt, steps: result.steps }, 'quick-apply finished');
+    log.info(
+      { jobId, stoppedAt: result.stoppedAt, steps: result.steps, answered: result.answered?.length ?? 0, unanswered: result.unanswered?.length ?? 0 },
+      'quick-apply finished',
+    );
     return {
       jobId,
       applyMethod: 'quick',
       stoppedAt: result.stoppedAt,
       screenshotPath: result.screenshotPath,
+      unanswered: result.unanswered,
+      newQuestions: result.newQuestions,
+      guidelinePath: result.guidelinePath,
     };
   } finally {
     await closeSession(session);
