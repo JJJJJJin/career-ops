@@ -10,7 +10,7 @@ import { callJson } from '../../shared/llm/client.js';
 import { createLogger } from '../../shared/logger.js';
 import { withBrowser } from '../../shared/browser/session.js';
 import { db } from '../../shared/db/store.js';
-import type { Job } from '../../shared/db/types.js';
+import type { ApplyType, Job } from '../../shared/db/types.js';
 
 const log = createLogger('seek-extract');
 
@@ -262,6 +262,42 @@ async function llmExtract(visibleText: string, title: string): Promise<LlmExtrac
   }
 }
 
+/**
+ * Detect how the posting is applied to, from the apply button:
+ *   text "Quick apply" + on-site href  → 'quick'   (drive the quick-apply flow)
+ *   text "Apply" / off-site href        → 'external' (record for manual apply)
+ * Falls back to 'unknown' when no apply button is found.
+ */
+async function detectApplyType(page: Page): Promise<{ applyType: ApplyType; externalApplyUrl: string | null }> {
+  try {
+    return await page.evaluate(() => {
+      const btn = document.querySelector('[data-automation="job-detail-apply"]') as HTMLAnchorElement | null;
+      if (!btn) return { applyType: 'unknown' as const, externalApplyUrl: null };
+      const text = (btn.textContent || '').trim().toLowerCase();
+      const rawHref = btn.getAttribute('href') || '';
+      let abs = rawHref;
+      try {
+        abs = new URL(rawHref, location.href).href;
+      } catch {
+        /* keep raw */
+      }
+      let sameHost = true;
+      try {
+        const h = new URL(abs).host;
+        sameHost = h.endsWith('seek.com') || h.endsWith('seek.com.au');
+      } catch {
+        sameHost = true;
+      }
+      if (text.includes('quick apply')) return { applyType: 'quick' as const, externalApplyUrl: null };
+      if (!sameHost) return { applyType: 'external' as const, externalApplyUrl: abs };
+      if (text.includes('apply')) return { applyType: 'external' as const, externalApplyUrl: null };
+      return { applyType: 'unknown' as const, externalApplyUrl: null };
+    });
+  } catch {
+    return { applyType: 'unknown', externalApplyUrl: null };
+  }
+}
+
 async function extractOnPage(page: Page, url: string, opts: ExtractOptions): Promise<Job> {
   const jobId = extractJobIdFromUrl(url);
   log.info({ jobId, url }, 'seek-extract: navigating');
@@ -272,8 +308,11 @@ async function extractOnPage(page: Page, url: string, opts: ExtractOptions): Pro
   await page
     .waitForSelector('script[type="application/ld+json"], [data-automation="jobAdDetails"]', { timeout: 15_000 })
     .catch(() => null);
+  // Apply button is what we classify quick vs external from — give it a moment.
+  await page.waitForSelector('[data-automation="job-detail-apply"]', { timeout: 5_000 }).catch(() => null);
 
   const data = await readPageData(page);
+  const apply = await detectApplyType(page);
   const jsonLd = findJobPosting(data.jsonLdRaw);
   const nextFields = findNextJobFields(data.nextData);
 
@@ -330,6 +369,8 @@ async function extractOnPage(page: Page, url: string, opts: ExtractOptions): Pro
     postedDate: jsonLd?.datePosted ?? null,
     fetchedAt: new Date().toISOString(),
     eligibilityFlags: [],
+    applyType: apply.applyType,
+    externalApplyUrl: apply.externalApplyUrl,
   };
 
   log.info(
@@ -340,6 +381,7 @@ async function extractOnPage(page: Page, url: string, opts: ExtractOptions): Pro
       location: job.location,
       classification: job.classification,
       descChars: job.description.length,
+      applyType: job.applyType,
     },
     'seek-extract: complete',
   );

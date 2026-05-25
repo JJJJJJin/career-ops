@@ -8,6 +8,9 @@ import { SCHEMA_TABLES_SQL, SCHEMA_INDEXES_SQL, MIGRATIONS } from './schema.js';
 import type {
   ApplicationRow,
   ApplicationStatus,
+  ApplyAnswer,
+  ApplyMethod,
+  ApplyState,
   EligibilityFlag,
   Job,
   JobSourceName,
@@ -33,6 +36,8 @@ type JobRow = {
   posted_date: string | null;
   fetched_at: string;
   eligibility_flags: string | null;
+  apply_type: string | null;
+  external_apply_url: string | null;
 };
 
 type AppRow = {
@@ -52,6 +57,12 @@ type AppRow = {
   model: string | null;
   profile_hash: string | null;
   notes: string | null;
+  apply_method: string | null;
+  applied_at: string | null;
+  apply_state: string | null;
+  apply_resume_path: string | null;
+  apply_answers_json: string | null;
+  apply_error: string | null;
   updated_at: string;
 };
 
@@ -70,6 +81,8 @@ function rowToJob(row: JobRow): Job {
     postedDate: row.posted_date,
     fetchedAt: row.fetched_at,
     eligibilityFlags: row.eligibility_flags ? (JSON.parse(row.eligibility_flags) as EligibilityFlag[]) : [],
+    applyType: (row.apply_type as Job['applyType']) ?? null,
+    externalApplyUrl: row.external_apply_url ?? null,
   };
 }
 
@@ -91,6 +104,12 @@ function rowToApplication(row: AppRow): ApplicationRow {
     model: row.model,
     profileHash: row.profile_hash,
     notes: row.notes,
+    applyMethod: (row.apply_method as ApplyMethod) ?? null,
+    appliedAt: row.applied_at,
+    applyState: (row.apply_state as ApplyState) ?? null,
+    applyResumePath: row.apply_resume_path,
+    applyAnswers: row.apply_answers_json ? (JSON.parse(row.apply_answers_json) as ApplyAnswer[]) : null,
+    applyError: row.apply_error,
     updatedAt: row.updated_at,
   };
 }
@@ -140,9 +159,11 @@ class DbStore {
   upsertJob(job: Job): void {
     const stmt = this.db.prepare(`
       INSERT INTO jobs (job_id, source, url, title, company, location, work_type, classification,
-                        description, salary_text, posted_date, fetched_at, eligibility_flags)
+                        description, salary_text, posted_date, fetched_at, eligibility_flags,
+                        apply_type, external_apply_url)
       VALUES (@job_id, @source, @url, @title, @company, @location, @work_type, @classification,
-              @description, @salary_text, @posted_date, @fetched_at, @eligibility_flags)
+              @description, @salary_text, @posted_date, @fetched_at, @eligibility_flags,
+              @apply_type, @external_apply_url)
       ON CONFLICT(job_id) DO UPDATE SET
         source = excluded.source,
         url = excluded.url,
@@ -155,7 +176,9 @@ class DbStore {
         salary_text = excluded.salary_text,
         posted_date = excluded.posted_date,
         fetched_at = excluded.fetched_at,
-        eligibility_flags = excluded.eligibility_flags
+        eligibility_flags = excluded.eligibility_flags,
+        apply_type = excluded.apply_type,
+        external_apply_url = excluded.external_apply_url
     `);
     stmt.run({
       job_id: job.jobId,
@@ -171,6 +194,8 @@ class DbStore {
       posted_date: job.postedDate,
       fetched_at: job.fetchedAt,
       eligibility_flags: job.eligibilityFlags.length ? JSON.stringify(job.eligibilityFlags) : null,
+      apply_type: job.applyType ?? null,
+      external_apply_url: job.externalApplyUrl ?? null,
     });
   }
 
@@ -242,6 +267,12 @@ class DbStore {
     model: string;
     profileHash: string;
     notes: string;
+    applyMethod: ApplyMethod;
+    appliedAt: string;
+    applyState: ApplyState;
+    applyResumePath: string;
+    applyAnswers: ApplyAnswer[];
+    applyError: string;
   }>): void {
     this.ensureApplication(jobId);
     const sets: string[] = [];
@@ -263,6 +294,12 @@ class DbStore {
       ['model', 'model', (v) => v],
       ['profileHash', 'profile_hash', (v) => v],
       ['notes', 'notes', (v) => v],
+      ['applyMethod', 'apply_method', (v) => v],
+      ['appliedAt', 'applied_at', (v) => v],
+      ['applyState', 'apply_state', (v) => v],
+      ['applyResumePath', 'apply_resume_path', (v) => v],
+      ['applyAnswers', 'apply_answers_json', (v) => (v ? JSON.stringify(v) : null)],
+      ['applyError', 'apply_error', (v) => v],
     ];
 
     for (const [key, col, mapVal] of map) {

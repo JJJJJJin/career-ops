@@ -14,6 +14,9 @@ export type EligibilityFlag = {
 /** Platform a job posting came from. Defaults to 'seek' for legacy rows. */
 export type JobSourceName = 'seek' | 'linkedin' | 'indeed' | 'builtin';
 
+/** How a posting is applied to. Detected from the SEEK apply button. */
+export type ApplyType = 'quick' | 'external' | 'unknown';
+
 export type Job = {
   jobId: string;
   source: JobSourceName;
@@ -28,6 +31,10 @@ export type Job = {
   postedDate: string | null;
   fetchedAt: string;
   eligibilityFlags: EligibilityFlag[];
+  /** 'quick' = on-SEEK quick apply, 'external' = employer site. null until detected. */
+  applyType?: ApplyType | null;
+  /** Destination when applyType === 'external'. */
+  externalApplyUrl?: string | null;
 };
 
 /** Thin stub returned by a JobSource.search() call before the full extract. */
@@ -75,6 +82,15 @@ export type ApplicationStatus =
   | 'offer'
   | 'skip';
 
+/** How the auto-apply attempt was made. */
+export type ApplyMethod = 'quick' | 'external';
+
+/** Outcome of an auto-apply attempt. */
+export type ApplyState = 'submitted' | 'filled_pending_review' | 'external_pending' | 'failed';
+
+/** One employer screening question and the answer the agent submitted. */
+export type ApplyAnswer = { question: string; answer: string; kind?: string };
+
 export type ApplicationRow = {
   jobId: string;
   fitScore: number | null;
@@ -92,6 +108,12 @@ export type ApplicationRow = {
   model: string | null;
   profileHash: string | null;
   notes: string | null;
+  applyMethod: ApplyMethod | null;
+  appliedAt: string | null;
+  applyState: ApplyState | null;
+  applyResumePath: string | null;
+  applyAnswers: ApplyAnswer[] | null;
+  applyError: string | null;
   updatedAt: string;
 };
 

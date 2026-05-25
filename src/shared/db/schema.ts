@@ -23,7 +23,9 @@ CREATE TABLE IF NOT EXISTS jobs (
   salary_text       TEXT,
   posted_date       TEXT,
   fetched_at        TEXT NOT NULL,
-  eligibility_flags TEXT
+  eligibility_flags TEXT,
+  apply_type        TEXT,   -- 'quick' | 'external' | 'unknown' (SEEK apply button)
+  external_apply_url TEXT   -- destination when apply_type='external'
 );
 
 CREATE TABLE IF NOT EXISTS applications (
@@ -43,6 +45,12 @@ CREATE TABLE IF NOT EXISTS applications (
   model             TEXT,
   profile_hash      TEXT,
   notes             TEXT,
+  apply_method      TEXT,   -- 'quick' | 'external'
+  applied_at        TEXT,
+  apply_state       TEXT,   -- 'submitted' | 'filled_pending_review' | 'external_pending' | 'failed'
+  apply_resume_path TEXT,
+  apply_answers_json TEXT,  -- audit trail of employer-question answers
+  apply_error       TEXT,
   updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -95,4 +103,13 @@ CREATE INDEX IF NOT EXISTS idx_applications_score ON applications(score_out_of_5
 export const MIGRATIONS: Array<{ table: string; column: string; ddl: string }> = [
   { table: 'jobs',      column: 'source', ddl: `ALTER TABLE jobs ADD COLUMN source TEXT NOT NULL DEFAULT 'seek'` },
   { table: 'scan_runs', column: 'source', ddl: `ALTER TABLE scan_runs ADD COLUMN source TEXT NOT NULL DEFAULT 'seek'` },
+  // Apply-type detection (Phase 2) + apply outcome columns (auto-apply).
+  { table: 'jobs',         column: 'apply_type',         ddl: `ALTER TABLE jobs ADD COLUMN apply_type TEXT` },
+  { table: 'jobs',         column: 'external_apply_url', ddl: `ALTER TABLE jobs ADD COLUMN external_apply_url TEXT` },
+  { table: 'applications', column: 'apply_method',       ddl: `ALTER TABLE applications ADD COLUMN apply_method TEXT` },
+  { table: 'applications', column: 'applied_at',         ddl: `ALTER TABLE applications ADD COLUMN applied_at TEXT` },
+  { table: 'applications', column: 'apply_state',        ddl: `ALTER TABLE applications ADD COLUMN apply_state TEXT` },
+  { table: 'applications', column: 'apply_resume_path',  ddl: `ALTER TABLE applications ADD COLUMN apply_resume_path TEXT` },
+  { table: 'applications', column: 'apply_answers_json', ddl: `ALTER TABLE applications ADD COLUMN apply_answers_json TEXT` },
+  { table: 'applications', column: 'apply_error',        ddl: `ALTER TABLE applications ADD COLUMN apply_error TEXT` },
 ];

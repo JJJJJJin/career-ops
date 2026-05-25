@@ -19,7 +19,9 @@ CREATE TABLE IF NOT EXISTS jobs (
   salary_text       TEXT,
   posted_date       TEXT,
   fetched_at        TEXT NOT NULL,
-  eligibility_flags TEXT  -- JSON array of {flag, evidence}
+  eligibility_flags TEXT,  -- JSON array of {flag, evidence}
+  apply_type        TEXT,  -- 'quick' | 'external' | 'unknown' (SEEK apply button)
+  external_apply_url TEXT  -- destination when apply_type='external'
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_company ON jobs(company);
@@ -43,6 +45,12 @@ CREATE TABLE IF NOT EXISTS applications (
   model             TEXT,
   profile_hash      TEXT,
   notes             TEXT,
+  apply_method      TEXT,   -- 'quick' | 'external'
+  applied_at        TEXT,
+  apply_state       TEXT,   -- 'submitted' | 'filled_pending_review' | 'external_pending' | 'failed'
+  apply_resume_path TEXT,
+  apply_answers_json TEXT,  -- audit trail of employer-question answers
+  apply_error       TEXT,
   updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
