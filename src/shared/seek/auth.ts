@@ -52,14 +52,21 @@ export async function looksLoggedInHere(page: Page): Promise<boolean> {
   return false;
 }
 
-/** Navigate to SEEK and determine whether a session is active. */
+/**
+ * Navigate to SEEK and determine whether a session is active. The reliable
+ * signal is the "Sign in" affordance: the logged-out homepage always shows it,
+ * a logged-in one never does. So its ABSENCE means we're signed in — more
+ * robust than matching a positive account selector (those drift). A positive
+ * account signal is treated as a fast-path confirmation.
+ */
 export async function isLoggedIn(page: Page): Promise<boolean> {
   await page.goto(config.seek.baseUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   await acceptCookies(page);
-  if (await anyVisible(page, SIGNED_OUT_SIGNALS)) return false;
-  if (await anyVisible(page, SIGNED_IN_SIGNALS)) return true;
-  log.warn('login state ambiguous (no sign-in or account signal matched) — treating as logged out; selectors may have drifted');
-  return false;
+  await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+  if (await anyVisible(page, SIGNED_IN_SIGNALS, 700)) return true;
+  // No sign-in affordance on the homepage ⇒ signed in.
+  const signedOut = await anyVisible(page, SIGNED_OUT_SIGNALS, 900);
+  return !signedOut;
 }
 
 export type EnsureLoginResult = { loggedIn: boolean; method: 'reused' | 'credentials' };
@@ -78,53 +85,54 @@ export async function ensureLoggedIn(session: BrowserSession, opts: { noCache?: 
   const { email } = config.seek;
   if (!email) {
     throw new Error(
-      'Not logged in and SEEK_EMAIL is not set in .env. Set it (and optionally SEEK_PASSWORD), ' +
-        'or run `career-ops seek-login --manual` once to sign in by hand.',
+      'Not logged in and SEEK_EMAIL is not set in .env. Set it, or run ' +
+        '`career-ops seek-login --manual` once to sign in by hand.',
     );
   }
 
-  // Password from .env, or — if absent — paused for via the human-input broker
-  // (the supervising agent supplies it with `agent-provide`). Run seek-login in
-  // the background so the agent can see the ⟨NEED-INPUT⟩ prompt and respond.
-  let password = config.seek.password;
-  if (!password) {
-    log.info('SEEK_PASSWORD not set — requesting it via the human-input broker');
-    password = await awaitHumanInput({ label: `SEEK password for ${email}`, kind: 'password' });
-  }
-
-  log.info('no session — attempting credential login via seek/login flow');
-  await runFlow('seek/login', {
+  // SEEK is passwordless: enter the email and request a one-time code.
+  log.info('no session — starting passwordless login (seek/login flow)');
+  const loginRes = await runFlow('seek/login', {
     session,
     startUrl: config.seek.baseUrl,
-    context: { email, password },
+    context: { email },
     noCache: opts.noCache,
   });
+  if (!loginRes.completed) {
+    throw new Error(
+      `Login flow stalled at step "${loginRes.failedStep}". Screenshot: ${loginRes.screenshotPath ?? 'n/a'}. ` +
+        'Improve flows/seek/login.md for that step, or run `career-ops seek-login --manual`.',
+    );
+  }
+
+  // We're now on the code-entry screen. Do NOT call isLoggedIn here — it would
+  // navigate away. Pause for the emailed code via the broker (the supervising
+  // agent relays it with `agent-provide`; reply "skip" for a captcha/other block).
+  const code = await awaitHumanInput({
+    label: `SEEK sign-in code emailed to ${email} (reply "skip" if there's a captcha or other block)`,
+    kind: 'code',
+  });
+  if (!code || code.trim().toLowerCase() === 'skip') {
+    throw new Error(
+      'No code provided. Run `career-ops seek-login --manual` once (headful) to finish login by hand; ' +
+        'the session will then be cached and reused.',
+    );
+  }
+
+  const codeRes = await runFlow('seek/login-code', { session, context: { code: code.trim() }, noCache: opts.noCache });
+  if (!codeRes.completed) {
+    throw new Error(`Code-entry flow stalled at step "${codeRes.failedStep}". Screenshot: ${codeRes.screenshotPath ?? 'n/a'}.`);
+  }
 
   if (await isLoggedIn(session.page)) {
     await saveStorageState(session, config.seek.authStatePath);
-    log.info({ authStatePath: config.seek.authStatePath }, 'credential login succeeded — session cached');
+    log.info({ authStatePath: config.seek.authStatePath }, 'login completed with emailed code — session cached');
     return { loggedIn: true, method: 'credentials' };
   }
 
-  // Not signed in yet — SEEK most likely emailed a one-time code. Ask the
-  // supervisor for it (they reply "skip" if it's a captcha / other block).
-  log.info('login not complete after credentials — requesting verification code via broker');
-  const code = await awaitHumanInput({
-    label: `SEEK verification code emailed to ${email} (reply "skip" if it's a captcha or other block)`,
-    kind: 'code',
-  });
-  if (code && code.trim().toLowerCase() !== 'skip') {
-    await runFlow('seek/login-code', { session, startUrl: undefined, context: { code: code.trim() }, noCache: opts.noCache });
-    if (await isLoggedIn(session.page)) {
-      await saveStorageState(session, config.seek.authStatePath);
-      log.info({ authStatePath: config.seek.authStatePath }, 'login completed with verification code — session cached');
-      return { loggedIn: true, method: 'credentials' };
-    }
-  }
-
   throw new Error(
-    'Login did not complete (captcha or unexpected screen). Run `career-ops seek-login --manual` once (headful) ' +
-      'to finish login by hand; the session will be cached and reused.',
+    'Entered the code but still not signed in (it may have been wrong or expired). ' +
+      'Re-run `career-ops seek-login`, or use `--manual`.',
   );
 }
 

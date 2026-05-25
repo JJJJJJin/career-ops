@@ -174,7 +174,15 @@ export async function runFlow(flowId: string, opts: RunFlowOptions = {}): Promis
       // NB: we deliberately do NOT substitute {{tokens}} into the instruction.
       // The resolver sees (and may cache/log) only the token, never the secret.
       // Tokens are resolved into the real value at execution time only.
-      const snap = await snapshotDom(session.page);
+      let snap = await snapshotDom(session.page);
+      // A near-empty snapshot means the page is mid-load (common right after a
+      // navigation — the SPA form hasn't painted). Settle and re-snapshot once
+      // so we don't ask the resolver to find a field that isn't there yet.
+      if (snap.nodes.filter((n) => n.interactive).length < 4) {
+        await session.page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+        await actions.jitter(900, 1500);
+        snap = await snapshotDom(session.page);
+      }
       const pageSig = snap.signature;
 
       let decision: ActionDecision | null = null;
@@ -244,6 +252,7 @@ export async function runFlow(flowId: string, opts: RunFlowOptions = {}): Promis
         history.push(`step "${step.title}" → ${decision.action}${decision.value ? ` "${decision.value}"` : ''}`);
         // settle: let any navigation / SPA transition land before next snapshot.
         await session.page.waitForLoadState('domcontentloaded', { timeout: 8000 }).catch(() => {});
+        await session.page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
         await actions.jitter(300, 700);
       } catch (err) {
         screenshotPath = await dumpFailure(session, flow.id, step.id);

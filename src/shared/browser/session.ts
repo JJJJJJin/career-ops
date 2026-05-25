@@ -48,6 +48,12 @@ export async function launchSession(opts: LaunchOptions = {}): Promise<BrowserSe
     timezoneId: 'Australia/Sydney',
     ...(hasState ? { storageState: opts.storageStatePath } : {}),
   });
+  // tsx/esbuild wraps named functions with a __name() helper; when one of our
+  // page.evaluate() bodies is serialised into the page, that helper must exist
+  // there too. addInitScript (raw string → not transformed) defines it on every
+  // document before any evaluate, surviving navigations. A tsc build doesn't
+  // emit __name, so this is a harmless no-op in production.
+  await context.addInitScript('globalThis.__name = globalThis.__name || function (f) { return f; };');
   const page = await context.newPage();
   return { browser, context, page };
 }
