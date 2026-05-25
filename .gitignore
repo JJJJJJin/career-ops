@@ -39,6 +39,8 @@ dist/
 .env.local
 # Persisted SEEK login session (cookies + localStorage) — never commit.
 data/seek-auth.json
+# Human-input broker request/response (may briefly hold a code/password).
+data/agent-input/
 
 # ─── Node ─────────────────────────────────────────────────────────────
 node_modules/

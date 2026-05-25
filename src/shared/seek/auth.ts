@@ -13,6 +13,7 @@ import { saveStorageState, type BrowserSession } from '../browser/session.js';
 import { config } from '../config.js';
 import { createLogger } from '../logger.js';
 import { runFlow } from '../agent/flow.js';
+import { awaitHumanInput } from '../agent/human-input.js';
 import { COOKIE_ACCEPT, SIGNED_IN_SIGNALS, SIGNED_OUT_SIGNALS } from './selectors.js';
 
 const log = createLogger('seek:auth');
@@ -74,12 +75,21 @@ export async function ensureLoggedIn(session: BrowserSession, opts: { noCache?: 
     return { loggedIn: true, method: 'reused' };
   }
 
-  const { email, password } = config.seek;
-  if (!email || !password) {
+  const { email } = config.seek;
+  if (!email) {
     throw new Error(
-      'Not logged in and SEEK_EMAIL / SEEK_PASSWORD are not set in .env. ' +
-        'Run `career-ops seek-login --manual` once to sign in by hand — the session is then cached and reused.',
+      'Not logged in and SEEK_EMAIL is not set in .env. Set it (and optionally SEEK_PASSWORD), ' +
+        'or run `career-ops seek-login --manual` once to sign in by hand.',
     );
+  }
+
+  // Password from .env, or — if absent — paused for via the human-input broker
+  // (the supervising agent supplies it with `agent-provide`). Run seek-login in
+  // the background so the agent can see the ⟨NEED-INPUT⟩ prompt and respond.
+  let password = config.seek.password;
+  if (!password) {
+    log.info('SEEK_PASSWORD not set — requesting it via the human-input broker');
+    password = await awaitHumanInput({ label: `SEEK password for ${email}`, kind: 'password' });
   }
 
   log.info('no session — attempting credential login via seek/login flow');
@@ -96,9 +106,25 @@ export async function ensureLoggedIn(session: BrowserSession, opts: { noCache?: 
     return { loggedIn: true, method: 'credentials' };
   }
 
+  // Not signed in yet — SEEK most likely emailed a one-time code. Ask the
+  // supervisor for it (they reply "skip" if it's a captcha / other block).
+  log.info('login not complete after credentials — requesting verification code via broker');
+  const code = await awaitHumanInput({
+    label: `SEEK verification code emailed to ${email} (reply "skip" if it's a captcha or other block)`,
+    kind: 'code',
+  });
+  if (code && code.trim().toLowerCase() !== 'skip') {
+    await runFlow('seek/login-code', { session, startUrl: undefined, context: { code: code.trim() }, noCache: opts.noCache });
+    if (await isLoggedIn(session.page)) {
+      await saveStorageState(session, config.seek.authStatePath);
+      log.info({ authStatePath: config.seek.authStatePath }, 'login completed with verification code — session cached');
+      return { loggedIn: true, method: 'credentials' };
+    }
+  }
+
   throw new Error(
-    'Credential login did not establish a session (SEEK likely required an emailed code or captcha). ' +
-      'Run `career-ops seek-login --manual` once (headful) to finish login by hand; the session will be cached and reused.',
+    'Login did not complete (captcha or unexpected screen). Run `career-ops seek-login --manual` once (headful) ' +
+      'to finish login by hand; the session will be cached and reused.',
   );
 }
 
