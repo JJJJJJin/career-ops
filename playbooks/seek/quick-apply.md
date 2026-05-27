@@ -14,12 +14,18 @@ exist (`apply_job <jobId>` has produced the resume PDF + cover_letter.json). Sta
 Vars: `{{jobId}}`, `{{resumeFilename}}` (basename of the tailored resume PDF), `{{coverLetterText}}`.
 
 ## open the application
-**Goal:** load the wizard and learn the starting stage.
+**Goal:** load the wizard and learn the starting stage — only for quick-apply jobs.
 **Do:** `seek_apply_open { jobId }`. Read the returned `step`.
 **Verify:** `step` is one of documents/questions/profile/review.
-**If unexpected:** `step: "unknown"` → `browser_observe` + `browser_screenshot`, STOP, show the
-user, and propose a detection fix. If it's not a quick-apply (external apply), STOP and tell
-the user to apply on the employer site.
+**If unexpected:**
+- `alreadyApplied: true` (`step: "already_applied"`) → you already applied to this job (our
+  records, or the page shows "Applied" where the apply button should be). SKIP it — do not re-apply.
+- `external: true` / `step: "external"` → this job redirects to the employer's own site; do NOT
+  drive the wizard. Record `{ title, company, externalUrl }` for the user to apply manually (in a
+  batch, add it to the `external[]` report).
+- `step: "unknown"` → `browser_observe` + `browser_screenshot`. If you SEE an "Applied" badge /
+  "you've already applied" (no apply button/wizard), treat it as already-applied and skip.
+  Otherwise STOP, show the user, and propose a detection fix.
 
 ## choose documents
 **Goal:** attach the tailored resume AND cover letter as PDFs (HR sees the filenames).

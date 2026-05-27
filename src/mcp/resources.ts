@@ -76,6 +76,12 @@ export function registerPrompts(server: McpServer): void {
   );
 
   server.registerPrompt(
+    'seek-batch-apply',
+    { title: 'SEEK batch apply', description: 'Brief the agent to apply to a LIST of SEEK URLs: quick-apply jobs driven (stop at review), external jobs reported for manual apply, resume slots cleaned up every N.' },
+    () => brief('seek/batch-apply', 'Apply to these SEEK job URLs following the playbook. Drive only quick-apply jobs (stop each at review for me to submit); collect external jobs and report them at the end for me to do manually; manage resume cleanup. Paste your URLs and I\'ll begin.'),
+  );
+
+  server.registerPrompt(
     'seek-login',
     { title: 'SEEK login', description: 'Brief the agent to sign in to SEEK (passwordless emailed code).' },
     () => brief('seek/login', 'Sign in to SEEK following the playbook. Ask me for the emailed code when you reach that step.'),

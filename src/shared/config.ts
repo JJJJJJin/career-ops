@@ -102,6 +102,10 @@ export const config = {
     // Batch caps.
     maxAppliesPerRun: parseInt10(process.env.SEEK_MAX_APPLIES_PER_RUN, 5),
     applyMinScore: parseFloat10(process.env.SEEK_APPLY_MIN_SCORE, parseFloat10(process.env.SCORE_THRESHOLD_STRONG, 4.0)),
+    // In a batch, run resume cleanup (seek_resume_delete_old) at the start and
+    // after every N applications, since each quick-apply UPLOADS a resume that
+    // counts toward SEEK's 10-resume cap. Default 9 = cap (10) − 1 protected default.
+    applyCleanupEvery: parseInt10(process.env.SEEK_APPLY_CLEANUP_EVERY, 9),
   },
 
   render: {

@@ -17,6 +17,7 @@ import { isLoggedIn, looksLoggedInHere } from '../../shared/seek/auth.js';
 import { deleteOldResumes, getSavedResumes, rotateUploadResume } from '../../shared/seek/documents.js';
 import { clickContinue, clickSubmit, detectStep, fillDocuments, type DocumentsInput } from '../../shared/seek/quick-apply.js';
 import { answerQuestions, captureNewQuestions, extractQuestions, guidelineFile, loadGuideline } from '../../shared/seek/questions.js';
+import { RESUME } from '../../shared/seek/selectors.js';
 import { sessions } from '../session.js';
 import { fail, guard, needsHumanInput, ok } from '../result.js';
 
@@ -55,11 +56,25 @@ export function registerSeekTools(server: McpServer): void {
   // ─── resume manager (rolling-window slot) ──────────────────────────────────
   server.registerTool(
     'seek_resume_list',
-    { title: 'List saved resumes', description: 'Open the SEEK resume manager and list saved resumes (newest first; Default pinned). SEEK caps the list at 10.' },
+    {
+      title: 'List saved resumes',
+      description:
+        'Open the SEEK resume manager and list saved resumes (newest first; Default pinned). Also returns cap (10), slotsFree, the protected-default presence, and cleanupEvery (run seek_resume_delete_old at batch start and after this many applications).',
+    },
     async () =>
       guard(async () => {
         const resumes = await getSavedResumes(await sessions.ensure());
-        return ok({ count: resumes.length, limit: 10, resumes });
+        const cap = RESUME.limit;
+        const sub = config.seek.protectedResume.trim().toLowerCase();
+        const protectedPresent = sub ? resumes.some((r) => r.filename.toLowerCase().includes(sub)) : false;
+        return ok({
+          count: resumes.length,
+          cap,
+          slotsFree: Math.max(0, cap - resumes.length),
+          cleanupEvery: config.seek.applyCleanupEvery,
+          protectedPresent,
+          resumes,
+        });
       }),
   );
 
@@ -98,12 +113,46 @@ export function registerSeekTools(server: McpServer): void {
     },
     async ({ jobId }) =>
       guard(async () => {
+        const job = db.getJob(jobId);
+
+        // 1) Already applied per our records → skip (deterministic).
+        const app = db.getApplication(jobId);
+        if (app && (app.status === 'applied' || app.applyState === 'submitted')) {
+          return ok(
+            { jobId, alreadyApplied: true, via: 'db', step: 'already_applied', applyState: app.applyState ?? undefined },
+            'Already applied per our records — skip this job.',
+          );
+        }
+
+        // 2) Only quick-apply gets driven. External ("Apply on company site") is
+        // NOT navigated — it's reported so the human applies manually.
+        if (job?.applyType === 'external') {
+          return ok(
+            { jobId, external: true, step: 'external', externalUrl: job.externalApplyUrl ?? job.url, title: job.title ?? undefined, company: job.company ?? undefined },
+            `EXTERNAL apply — do NOT drive the wizard. Record for the user to apply manually: ${job.externalApplyUrl ?? job.url}`,
+          );
+        }
+
         const page = await sessions.getPage();
         const url = `${config.seek.baseUrl}/job/${jobId}/apply`;
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
         await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
         await page.waitForTimeout(1000);
-        return ok({ jobId, url, step: await detectStep(page) });
+        const step = await detectStep(page);
+
+        // 3) Fallback when the DB didn't know: the wizard isn't showing (no
+        // documents/questions/review controls) AND the page says "applied" —
+        // i.e. where the apply button should be there's an "Applied" marker.
+        if (step === 'unknown') {
+          const appliedSignal = await page
+            .evaluate(() => /you'?ve already applied|you have already applied|already applied|you applied|application (submitted|received|complete)/i.test(document.body.innerText || ''))
+            .catch(() => false);
+          if (appliedSignal) {
+            return ok({ jobId, url, alreadyApplied: true, via: 'page', step: 'already_applied' }, 'Page shows this job is already applied — skip.');
+          }
+        }
+
+        return ok({ jobId, url, external: false, alreadyApplied: false, step });
       }),
   );
 
