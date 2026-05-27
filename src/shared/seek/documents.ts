@@ -185,3 +185,83 @@ export async function rotateUploadResume(session: BrowserSession, pdfPath: strin
   journal.note('resume rotation: uploaded', { resume: wanted, deletedOldest: deleted, saved: resumes.length });
   return { filename: wanted, deleted, count: resumes.length };
 }
+
+export type DeleteOldResult = {
+  /** Filenames successfully deleted. */
+  deleted: string[];
+  /** Resumes that could not be deleted (e.g. SEEK blocked it), with the error. */
+  failed: Array<{ filename: string; error: string }>;
+  /** The protected default we kept, if found. */
+  keptDefault: string | null;
+  defaultFound: boolean;
+  /** Saved-resume count after the operation. */
+  remaining: number;
+  /** Whether the manager drawer was closed via "Done". */
+  closed: boolean;
+  message: string;
+};
+
+/**
+ * Delete EVERY saved resume except the protected default (filename contains
+ * config.seek.protectedResume). Destructive and immediate — no preview.
+ * If no default is found, deletes all and reports that it must be uploaded by
+ * hand. Refuses to run when no protected substring is configured, so a misconfig
+ * can never silently wipe every resume.
+ */
+export async function deleteOldResumes(session: BrowserSession): Promise<DeleteOldResult> {
+  const protectedSub = config.seek.protectedResume.trim().toLowerCase();
+  if (!protectedSub) {
+    throw new Error('SEEK_PROTECTED_RESUME is not set — refusing to delete resumes without a configured default to keep.');
+  }
+  const page = session.page;
+  await openManager(page);
+  const resumes = await listResumes(page);
+  const isDefault = (r: SavedResume): boolean => r.filename.toLowerCase().includes(protectedSub);
+  const defaults = resumes.filter(isDefault);
+  const victims = resumes.filter((r) => !isDefault(r));
+  const defaultFound = defaults.length > 0;
+  const keptDefault = defaults[0]?.filename ?? null;
+
+  const deleted: string[] = [];
+  const failed: Array<{ filename: string; error: string }> = [];
+  for (const v of victims) {
+    try {
+      await deleteResume(page, v);
+      deleted.push(v.filename);
+      await openManager(page); // re-settle the manager after the list re-renders
+    } catch (err) {
+      failed.push({ filename: v.filename, error: (err as Error).message });
+      log.warn({ filename: v.filename, err: (err as Error).message }, 'deleteOldResumes: delete failed (skipping)');
+    }
+  }
+  const remaining = (await listResumes(page)).length;
+
+  // Close the manager drawer by clicking "Done" (stable hook, with a text fallback).
+  const closed = await clickManagerDone(page);
+
+  const message = defaultFound
+    ? `Kept default "${keptDefault}". Deleted ${deleted.length} other resume(s)${failed.length ? `; ${failed.length} could not be deleted` : ''}.`
+    : `No default resume (filename containing "${config.seek.protectedResume}") found. Deleted ${deleted.length} resume(s) — please upload your default resume manually.`;
+
+  log.info({ deleted: deleted.length, failed: failed.length, defaultFound, remaining, closed }, 'deleteOldResumes complete');
+  journal.note('resume cleanup: delete old', { deleted, kept: keptDefault, defaultFound, failed: failed.length, closed });
+  return { deleted, failed, keptDefault, defaultFound, remaining, closed, message };
+}
+
+/** Click the manager's "Done" to close the drawer. Best-effort; returns whether it clicked. */
+async function clickManagerDone(page: Page): Promise<boolean> {
+  for (const loc of [page.locator(RESUME.done), page.getByRole('button', { name: /^done$/i })]) {
+    try {
+      const el = loc.first();
+      if (await el.isVisible({ timeout: 1500 }).catch(() => false)) {
+        await el.click({ timeout: 5000 });
+        await page.waitForTimeout(600);
+        return true;
+      }
+    } catch {
+      /* try next */
+    }
+  }
+  log.warn('deleteOldResumes: "Done" button not found to close the manager');
+  return false;
+}

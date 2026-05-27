@@ -4,15 +4,18 @@
 // (the login form, captchas, page variations) are left to the agent + the
 // atomic browser_* tools following a playbook. Login here is just the
 // deterministic state check + session persistence.
+import fs from 'node:fs';
+import path from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { config } from '../../shared/config.js';
 import { db } from '../../shared/db/store.js';
 import { saveStorageState } from '../../shared/browser/session.js';
 import { journal } from '../../shared/agent/journal.js';
+import { applicationDir, artefactBase } from '../../shared/slug.js';
 import { isLoggedIn, looksLoggedInHere } from '../../shared/seek/auth.js';
-import { getSavedResumes, rotateUploadResume } from '../../shared/seek/documents.js';
-import { clickContinue, clickSubmit, detectStep, fillDocuments } from '../../shared/seek/quick-apply.js';
+import { deleteOldResumes, getSavedResumes, rotateUploadResume } from '../../shared/seek/documents.js';
+import { clickContinue, clickSubmit, detectStep, fillDocuments, type DocumentsInput } from '../../shared/seek/quick-apply.js';
 import { answerQuestions, captureNewQuestions, extractQuestions, guidelineFile, loadGuideline } from '../../shared/seek/questions.js';
 import { sessions } from '../session.js';
 import { fail, guard, needsHumanInput, ok } from '../result.js';
@@ -72,6 +75,19 @@ export function registerSeekTools(server: McpServer): void {
       guard(async () => ok((await rotateUploadResume(await sessions.ensure(), pdfPath)) as unknown as Record<string, unknown>)),
   );
 
+  server.registerTool(
+    'seek_resume_delete_old',
+    {
+      title: 'Delete old resumes',
+      description:
+        'Open the SEEK resume manager and delete EVERY saved resume except your protected default (the one whose filename contains SEEK_PROTECTED_RESUME). Destructive and immediate — no preview. If the default is not found, deletes all and reports that you must upload it manually. Refuses to run if SEEK_PROTECTED_RESUME is unset.',
+    },
+    async () => guard(async () => {
+      const r = await deleteOldResumes(await sessions.ensure());
+      return ok(r as unknown as Record<string, unknown>, r.message);
+    }),
+  );
+
   // ─── apply wizard (one tool per stage; the agent orchestrates transitions) ──
   server.registerTool(
     'seek_apply_open',
@@ -102,16 +118,62 @@ export function registerSeekTools(server: McpServer): void {
     {
       title: 'Fill the documents stage',
       description:
-        'On the documents stage: select the pre-uploaded resume by filename substring, and paste the cover letter (or choose "don\'t include a cover letter" when omitted). Does NOT advance — call seek_apply_advance next.',
+        'Attach the resume and cover letter on the documents stage. DEFAULT (just pass jobId): UPLOAD both as PDFs resolved from output/seek/<dir>/<base>-resume.pdf and -cover_letter.pdf — the HR-facing filenames apply_job generated. Fallbacks: resume "select" (pick a SEEK-saved resume by filename); cover letter "write" (paste text) or "omit". Does NOT advance — call seek_apply_advance next.',
       inputSchema: {
-        resumeFilename: z.string().describe('Filename (or substring) of the saved resume to select; upload it first with seek_resume_rotate if missing.'),
-        coverLetterText: z.string().optional().describe('Cover-letter body to paste. Omit to skip the cover letter.'),
+        jobId: z.string().optional().describe('Resolve the tailored resume + cover-letter PDFs for this job (upload mode). Run apply_job first to generate them.'),
+        resume: z.enum(['upload', 'select']).optional().describe('Default "upload" (needs jobId or resumePath).'),
+        coverLetter: z.enum(['upload', 'write', 'omit']).optional().describe('Default "upload" (needs jobId or coverLetterPath).'),
+        resumeFilename: z.string().optional().describe('For resume="select": substring of a SEEK-saved resume.'),
+        coverLetterText: z.string().optional().describe('For coverLetter="write": the cover-letter body.'),
+        resumePath: z.string().optional().describe('Explicit resume PDF path (overrides jobId resolution).'),
+        coverLetterPath: z.string().optional().describe('Explicit cover-letter PDF path (overrides jobId resolution).'),
       },
     },
-    async ({ resumeFilename, coverLetterText }) =>
+    async ({ jobId, resume, coverLetter, resumeFilename, coverLetterText, resumePath, coverLetterPath }) =>
       guard(async () => {
-        await fillDocuments(await sessions.getPage(), { resumeFilename, coverLetterText });
-        return ok({ filled: 'documents', resumeFilename, coverLetter: Boolean(coverLetterText) });
+        // Resolve the standard HR-facing artefact paths from the jobId.
+        let resolvedResume: string | undefined;
+        let resolvedCover: string | undefined;
+        if (jobId) {
+          const job = db.getJob(jobId);
+          if (!job) throw new Error(`${jobId} not in DB — run apply_job ${jobId} first to generate the documents.`);
+          const base = artefactBase(job);
+          const dir = applicationDir(job);
+          resolvedResume = path.join(dir, `${base}-resume.pdf`);
+          resolvedCover = path.join(dir, `${base}-cover_letter.pdf`);
+        }
+
+        const input: DocumentsInput = {};
+
+        // Resume: upload (default) or select-from-saved.
+        const resumeMode = resume ?? (resumeFilename ? 'select' : 'upload');
+        if (resumeMode === 'select') {
+          if (!resumeFilename) throw new Error('resume="select" needs resumeFilename.');
+          input.resumeFilename = resumeFilename;
+        } else {
+          const p = resumePath ?? resolvedResume;
+          if (!p) throw new Error('resume="upload" needs a jobId or an explicit resumePath.');
+          if (!fs.existsSync(p)) throw new Error(`resume PDF not found: ${p} — run apply_job first.`);
+          input.resumePath = p;
+        }
+
+        // Cover letter: upload (default), write text, or omit.
+        const coverMode = coverLetter ?? (coverLetterText ? 'write' : 'upload');
+        if (coverMode === 'write') {
+          input.coverLetterText = coverLetterText ?? '';
+        } else if (coverMode === 'upload') {
+          const p = coverLetterPath ?? resolvedCover;
+          if (!p) throw new Error('coverLetter="upload" needs a jobId or an explicit coverLetterPath.');
+          if (!fs.existsSync(p)) throw new Error(`cover letter PDF not found: ${p} — run apply_job first.`);
+          input.coverLetterPath = p;
+        } // 'omit' → leave unset → "Don't include a cover letter"
+
+        await fillDocuments(await sessions.getPage(), input);
+        return ok({
+          filled: 'documents',
+          resume: input.resumePath ? `upload:${path.basename(input.resumePath)}` : `select:${input.resumeFilename}`,
+          coverLetter: input.coverLetterPath ? `upload:${path.basename(input.coverLetterPath)}` : input.coverLetterText ? 'write' : 'omit',
+        });
       }),
   );
 

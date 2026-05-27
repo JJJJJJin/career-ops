@@ -21,3 +21,14 @@ then uploads, then re-pins the protected default if one is configured.
 **Verify:** the result reports the saved filename; `seek_resume_list` shows it.
 **If unexpected:** "every resume is Default or protected" → STOP and ask the user to free a
 slot manually (you must not delete a protected or default resume).
+
+## clean up old resumes (optional)
+**Goal:** keep only the protected default, removing everything else.
+**Do:** `seek_resume_delete_old`. It deletes EVERY saved resume whose filename does NOT
+contain `SEEK_PROTECTED_RESUME` (the user's hand-uploaded default, e.g. "resume_default"),
+then clicks **Done** to close the manager drawer. Destructive and immediate — no preview.
+It refuses to run if `SEEK_PROTECTED_RESUME` is unset.
+**Verify:** the result lists `deleted` + `keptDefault` and `closed: true` (drawer closed).
+**If unexpected:** `defaultFound: false` means the default wasn't on SEEK — it deleted all and
+you should tell the user to upload their default ("Jincheng Deng_AI Engineer_resume_default")
+by hand. Any `failed` entries are resumes SEEK wouldn't delete (e.g. the pinned default).

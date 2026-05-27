@@ -21,22 +21,20 @@ Vars: `{{jobId}}`, `{{resumeFilename}}` (basename of the tailored resume PDF), `
 user, and propose a detection fix. If it's not a quick-apply (external apply), STOP and tell
 the user to apply on the employer site.
 
-## make sure the resume is uploaded
-**Goal:** the tailored resume must be selectable in the documents dropdown.
-**Do:** if you're unsure it's uploaded, `seek_resume_list`; if `{{resumeFilename}}` isn't
-listed, `seek_resume_rotate { pdfPath }` (it deletes the oldest non-default resume when the
-list of 10 is full, then uploads). It's idempotent.
-**Verify:** the filename appears in `seek_resume_list`.
-
 ## choose documents
-**Goal:** select the tailored resume and paste the cover letter.
+**Goal:** attach the tailored resume AND cover letter as PDFs (HR sees the filenames).
 **You're here when:** `seek_apply_detect_step` → "documents".
-**Do:** `seek_apply_fill_documents { resumeFilename, coverLetterText }` (omit coverLetterText
-to skip the cover letter). Then `seek_apply_advance`.
-**Verify:** advance returns the next stage (questions / profile / review).
-**If unexpected:** if fill reports the resume isn't in the dropdown, go back to "make sure the
-resume is uploaded". If the radios don't respond, drop to atomic tools: observe, then
-`browser_click` the option's *label*.
+**Do:** `seek_apply_fill_documents { jobId }` — by default it UPLOADS both PDFs resolved from
+`output/seek/<dir>/<base>-resume.pdf` and `-cover_letter.pdf` (the files `apply_job` generated).
+No `seek_resume_rotate` needed — uploading per-application avoids SEEK's 10-resume cap entirely.
+Then `seek_apply_advance`.
+**Verify:** advance returns the next stage (questions / profile / review). The page shows
+"… attached" under each section.
+**If unexpected:** if a PDF path is missing, run `apply_job <jobId>` first. The documents UI
+uses custom radios (Upload / Select / Write / Don't include) that `browser_observe` can't see —
+do NOT try to click them atomically; the tool handles them by label text + the stable file
+inputs `#resume-fileFile` / `#coverLetter-fileFile`. Fallbacks: `resume:"select"` +
+`resumeFilename` (pick a SEEK-saved resume), or `coverLetter:"write"` + `coverLetterText`.
 
 ## answer employer questions
 **Goal:** answer every employer question from the user's guideline — never guess.

@@ -66,22 +66,63 @@ async function chooseOption(page: Page, labelRe: RegExp): Promise<void> {
   await page.waitForTimeout(500);
 }
 
-export async function fillDocuments(page: Page, opts: QuickApplyOptions): Promise<void> {
-  // Resume: "Select a resumé" → choose the pre-uploaded one from the dropdown.
-  await chooseOption(page, /select a resum/i);
-  const select = page.locator('select').first();
-  await select.waitFor({ state: 'visible', timeout: 8000 });
-  const value = await select.evaluate((sel: HTMLSelectElement, sub: string) => {
-    const opt = Array.from(sel.options).find((o) => (o.textContent ?? '').toLowerCase().includes(sub.toLowerCase()));
-    return opt ? opt.value : '';
-  }, opts.resumeFilename);
-  if (!value) throw new Error(`resume "${opts.resumeFilename}" not found in the apply dropdown`);
-  await select.selectOption(value);
-  log.info({ resume: opts.resumeFilename }, 'selected saved resume');
-  journal.note('documents: selected resume', { resume: opts.resumeFilename });
+// Stable file-input ids on the apply documents stage (hidden inputs; driven by
+// setInputFiles, not a native dialog). The visible radios ("Upload a resumé" /
+// "Upload a cover letter" / …) are custom <label>s clicked by text.
+const RESUME_FILE_INPUT = '#resume-fileFile';
+const COVER_FILE_INPUT = '#coverLetter-fileFile';
 
-  // Cover letter: "Write a cover letter" → paste text (no document slot used).
-  if (opts.coverLetterText && opts.coverLetterText.trim()) {
+/** What to attach on the documents stage. Upload (PDF) is preferred; the
+ *  select-saved-resume / write-text paths remain as fallbacks. */
+export type DocumentsInput = {
+  /** Absolute path to a resume PDF to UPLOAD (HR-facing filename preserved). */
+  resumePath?: string;
+  /** Substring of a SEEK-saved resume to SELECT (legacy fallback). */
+  resumeFilename?: string;
+  /** Absolute path to a cover-letter PDF to UPLOAD. */
+  coverLetterPath?: string;
+  /** Cover-letter body to WRITE as text (legacy fallback). */
+  coverLetterText?: string;
+};
+
+async function uploadInto(page: Page, selector: string, filePath: string): Promise<void> {
+  await page.locator(selector).first().setInputFiles(filePath, { timeout: 15_000 });
+  // Let SEEK register the upload (it shows "… attached" when done).
+  await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+  await page.waitForTimeout(2000);
+}
+
+export async function fillDocuments(page: Page, opts: DocumentsInput): Promise<void> {
+  // ── Resume ──
+  if (opts.resumePath) {
+    await chooseOption(page, /upload a resum/i);
+    await uploadInto(page, RESUME_FILE_INPUT, opts.resumePath);
+    log.info({ resume: path.basename(opts.resumePath) }, 'uploaded resume PDF');
+    journal.note('documents: uploaded resume PDF', { resume: path.basename(opts.resumePath) });
+  } else if (opts.resumeFilename) {
+    // Legacy: pick a pre-uploaded resume from the saved-list dropdown.
+    await chooseOption(page, /select a resum/i);
+    const select = page.locator('select').first();
+    await select.waitFor({ state: 'visible', timeout: 8000 });
+    const value = await select.evaluate((sel: HTMLSelectElement, sub: string) => {
+      const opt = Array.from(sel.options).find((o) => (o.textContent ?? '').toLowerCase().includes(sub.toLowerCase()));
+      return opt ? opt.value : '';
+    }, opts.resumeFilename);
+    if (!value) throw new Error(`resume "${opts.resumeFilename}" not found in the apply dropdown`);
+    await select.selectOption(value);
+    log.info({ resume: opts.resumeFilename }, 'selected saved resume');
+    journal.note('documents: selected resume', { resume: opts.resumeFilename });
+  } else {
+    throw new Error('no resume provided (need resumePath to upload, or resumeFilename to select).');
+  }
+
+  // ── Cover letter ──
+  if (opts.coverLetterPath) {
+    await chooseOption(page, /upload a cover letter/i);
+    await uploadInto(page, COVER_FILE_INPUT, opts.coverLetterPath);
+    log.info({ cover: path.basename(opts.coverLetterPath) }, 'uploaded cover letter PDF');
+    journal.note('documents: uploaded cover letter PDF', { cover: path.basename(opts.coverLetterPath) });
+  } else if (opts.coverLetterText && opts.coverLetterText.trim()) {
     await chooseOption(page, /write a cover letter/i);
     const ta = page.locator('textarea').first();
     await ta.waitFor({ state: 'visible', timeout: 8000 });
