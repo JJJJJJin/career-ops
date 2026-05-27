@@ -152,6 +152,49 @@ export async function clickSubmit(page: Page): Promise<void> {
 }
 
 /**
+ * Detect SEEK's post-submit confirmation. "Your application has been sent" is
+ * the stable signal (only the company name varies); "Nice work," corroborates.
+ * This is a POSITIVE signal — it never appears while the user is editing answers
+ * or navigating back, so polling for it can't false-trigger on those.
+ */
+export async function detectSubmitted(page: Page): Promise<string | null> {
+  return page
+    .evaluate(() => {
+      const txt = document.body ? document.body.innerText || '' : '';
+      const m = txt.match(/your application has been sent[^\n]{0,80}|nice work,[^\n]{0,40}/i);
+      return m ? m[0].replace(/\s+/g, ' ').trim() : null;
+    })
+    .catch(() => null);
+}
+
+export type WaitSubmittedResult = {
+  submitted: boolean;
+  timedOut: boolean;
+  /** The confirmation text that matched, when submitted. */
+  signal?: string;
+  url: string;
+  waitedMs: number;
+};
+
+/**
+ * Poll until the submit confirmation appears (i.e. the human clicked Submit) or
+ * the bounded wait elapses. Bounded so a single MCP call stays under client
+ * timeouts; the caller re-invokes to keep waiting.
+ */
+export async function waitForSubmitted(page: Page, opts: { maxWaitMs?: number; pollMs?: number } = {}): Promise<WaitSubmittedResult> {
+  const maxWaitMs = opts.maxWaitMs ?? 45_000;
+  const pollMs = opts.pollMs ?? 2000;
+  const start = Date.now();
+  const deadline = start + maxWaitMs;
+  for (;;) {
+    const hit = await detectSubmitted(page);
+    if (hit) return { submitted: true, timedOut: false, signal: hit, url: page.url(), waitedMs: Date.now() - start };
+    if (Date.now() >= deadline) return { submitted: false, timedOut: true, url: page.url(), waitedMs: Date.now() - start };
+    await page.waitForTimeout(pollMs);
+  }
+}
+
+/**
  * Which stage are we on? Detected by step-specific content, NOT the progress
  * nav (which always shows every stage label). 'documents' has the resume-method
  * radios; 'review' has a "Submit application" action button.

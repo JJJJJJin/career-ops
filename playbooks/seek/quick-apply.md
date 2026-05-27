@@ -66,11 +66,15 @@ again. Repeat until `allAnswered: true`. Do NOT submit with unanswered questions
 which resume, the cover letter, and every employer answer. Note "You answered N out of N".
 **Verify:** all stages were completed; nothing is missing.
 
-## submit (gated)
-**Goal:** submit ONLY with authority.
-**Default:** do nothing — leave the filled application on the review page and tell the user it's
-ready. Record `apply_state: filled_pending_review` by calling `seek_apply_submit { jobId }`
-(with no `humanApproved`), which refuses to submit and parks it.
-**With the user's explicit yes for THIS job:** `seek_apply_submit { jobId, humanApproved: true }`.
-**Unattended:** only when `SEEK_ALLOW_SUBMIT=true` is configured.
-**Never** set `humanApproved: true` without an actual user yes. Close the run with `run_end`.
+## submit
+**Goal:** submit with authority. Default is the user submitting MANUALLY, auto-detected.
+**Manual submit (default / preferred):** tell the user to click "Submit application" in the window
+themselves, then call `seek_apply_wait_submitted { jobId }`. It polls for SEEK's "Your application
+has been sent" confirmation; the instant the user submits, it records the job applied and returns
+`submitted: true` → proceed to the next job. If it returns `submitted: false` (bounded ~45s), the
+user is still reviewing/editing (that never false-triggers) — call it AGAIN to keep waiting, unless
+they said skip. You never click submit in this mode.
+**Agent submit (only if authorized):** `seek_apply_submit { jobId, humanApproved: true }` after an
+explicit per-job yes, or unattended only when `SEEK_ALLOW_SUBMIT=true`. Never set `humanApproved`
+without a real yes. With no authority it parks at review (`filled_pending_review`).
+Close the run with `run_end`.

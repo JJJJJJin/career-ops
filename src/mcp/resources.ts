@@ -77,8 +77,8 @@ export function registerPrompts(server: McpServer): void {
 
   server.registerPrompt(
     'seek-batch-apply',
-    { title: 'SEEK batch apply', description: 'Brief the agent to apply to a LIST of SEEK URLs: quick-apply jobs driven (stop at review), external jobs reported for manual apply, resume slots cleaned up every N.' },
-    () => brief('seek/batch-apply', 'Apply to these SEEK job URLs following the playbook. Drive only quick-apply jobs (stop each at review for me to submit); collect external jobs and report them at the end for me to do manually; manage resume cleanup. Paste your URLs and I\'ll begin.'),
+    { title: 'SEEK batch apply (CSV)', description: 'Brief the agent for a CSV batch (company,title,url,score): auto-apply score<4 (stop at review for the user to submit), and only draft + report score≥4 good jobs for the user to do themselves. External jobs reported; resume slots managed by real count.' },
+    () => brief('seek/batch-apply', 'Apply to the jobs in this CSV (company, title, url, score) following the playbook. Score < 4: auto-apply, stopping each at review for me to submit (auto-detected). Score ≥ 4: do NOT apply — generate a draft and list them for me to prepare myself. Report external + skipped at the end. Paste the CSV (or give me the file path) and I\'ll begin.'),
   );
 
   server.registerPrompt(

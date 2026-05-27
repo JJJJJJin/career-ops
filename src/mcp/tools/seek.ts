@@ -15,7 +15,7 @@ import { journal } from '../../shared/agent/journal.js';
 import { applicationDir, artefactBase } from '../../shared/slug.js';
 import { isLoggedIn, looksLoggedInHere } from '../../shared/seek/auth.js';
 import { deleteOldResumes, getSavedResumes, rotateUploadResume } from '../../shared/seek/documents.js';
-import { clickContinue, clickSubmit, detectStep, fillDocuments, type DocumentsInput } from '../../shared/seek/quick-apply.js';
+import { clickContinue, clickSubmit, detectStep, fillDocuments, waitForSubmitted, type DocumentsInput } from '../../shared/seek/quick-apply.js';
 import { answerQuestions, captureNewQuestions, extractQuestions, guidelineFile, loadGuideline } from '../../shared/seek/questions.js';
 import { RESUME } from '../../shared/seek/selectors.js';
 import { sessions } from '../session.js';
@@ -283,6 +283,35 @@ export function registerSeekTools(server: McpServer): void {
           );
         }
         return ok({ allAnswered: true, total: questions.length, answered });
+      }),
+  );
+
+  server.registerTool(
+    'seek_apply_wait_submitted',
+    {
+      title: 'Wait for manual submission',
+      description:
+        'Poll the review page until SEEK\'s "Your application has been sent" confirmation appears — i.e. the USER clicked Submit themselves. Robust: editing answers or clicking Back never triggers it (only the real success page does). On detection, records the job as applied (when jobId given) so the next run skips it. Bounded wait (default ~45s) to stay under client timeouts: if it returns submitted:false/timedOut, call it AGAIN to keep waiting (the user may still be reviewing), or treat a deliberate non-submit as skip.',
+      inputSchema: {
+        jobId: z.string().optional().describe('Record this job as applied on detection.'),
+        maxWaitMs: z.number().int().optional().describe('Max poll time for THIS call (default 45000). Re-call to keep waiting.'),
+      },
+    },
+    async ({ jobId, maxWaitMs }) =>
+      guard(async () => {
+        const page = await sessions.getPage();
+        const r = await waitForSubmitted(page, { maxWaitMs });
+        if (r.submitted && jobId) {
+          db.updateApplicationFields(jobId, { applyState: 'submitted', appliedAt: new Date().toISOString(), applyMethod: 'quick' });
+          db.setStatus(jobId, 'applied', 'submitted manually via SEEK quick apply (detected by seek_apply_wait_submitted)');
+          journal.note('submission detected + recorded applied', { jobId, signal: r.signal });
+        }
+        return ok(
+          { ...r, jobId, recorded: r.submitted && Boolean(jobId) },
+          r.submitted
+            ? `Submission detected ("${r.signal}")${jobId ? ' — recorded as applied' : ''}. Proceed to the next job.`
+            : `No submission yet after ${Math.round(r.waitedMs / 1000)}s — call again to keep waiting, or treat as skip if the user decided not to apply.`,
+        );
       }),
   );
 
