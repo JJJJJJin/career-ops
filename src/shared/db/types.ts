@@ -143,3 +143,18 @@ export type SelectorCacheEntry = {
   confidence: number | null;
   hits: number;
 };
+
+export type AgentRunStatus = 'running' | 'awaiting_human' | 'paused' | 'done' | 'failed';
+
+/** Durable progress of an MCP agent-driven workflow run (no secrets stored). */
+export type AgentRun = {
+  runId: string;
+  workflow: string | null;
+  goal: string | null;
+  vars: Record<string, unknown>;
+  currentStep: string | null;
+  status: AgentRunStatus;
+  steps: Array<{ ts: string; note: string }>;
+  startedAt: string;
+  updatedAt: string;
+};

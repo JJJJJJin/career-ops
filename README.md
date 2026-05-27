@@ -193,6 +193,56 @@ natural language:
 Add new natural-language patterns by editing the `description:` field in
 the relevant `openclaw/<tool>/SKILL.md`.
 
+## MCP server (stateful, agent-driven)
+
+The whole toolset is also exposed over the **Model Context Protocol** (`src/mcp/`),
+which inverts the automation model: instead of an internal LLM resolver deciding
+clicks, **your local agent is the reasoner** and the server is a stateful service.
+
+```bash
+npm run mcp-serve            # localhost Streamable-HTTP daemon (default)
+# or: npm run mcp-stdio      # stdio, spawned by the client
+
+# register with Claude Code:
+claude mcp add --transport http career-ops http://127.0.0.1:8731/mcp
+#   (stdio: claude mcp add career-ops -- node dist/mcp/transports/stdio.js)
+```
+
+Why a server: it **holds one live browser session and the run-state across the
+whole conversation** — so it can keep a half-finished, logged-in session open
+*while it asks you for a captcha or an emailed code*, then carry on. The browser
+is launched lazily and idle-closed (`MCP_BROWSER_IDLE_MS`) to spare RAM on a Pi;
+cookies persist across the close.
+
+**Tool families**
+
+| Family | Tools | What they do |
+|---|---|---|
+| Session | `session_status` / `session_open` / `session_close` | manage the one live browser |
+| Perceive | `browser_observe` | ref-tagged snapshot of interactive elements |
+| Act (atomic) | `browser_click` / `browser_type` / `browser_select` / `browser_check` / `browser_upload` / `browser_press` / `browser_goto` / `browser_read` / `browser_screenshot` / `browser_assert` | one human-like action on a `ref` |
+| SEEK semantic | `seek_login_status` / `seek_save_session` / `seek_resume_list` / `seek_resume_rotate` / `seek_apply_{open,detect_step,fill_documents,extract_questions,answer_questions,advance,submit}` | deterministic bundles for SEEK's stable, structured surfaces |
+| Catalog | `job_search` / `job_extract` / `evaluate_job` / `generate_*` / `render_*_pdf` / `apply_job` / `daily_pipeline` / `query_jobs` / `show_job` / `mark_job` / `job_stats` / `render_tracker` / `distill_profile` / `send_files` | the stateless pipeline, unchanged |
+| Run-state | `run_begin` / `run_note` / `run_status` / `run_end` | durable progress (resume "where were we?") |
+| Workflow | `workflow_list` / `workflow_get` / `workflow_propose_fix` / `workflow_apply_fix` | read & self-correct playbooks |
+
+**Playbooks** (`playbooks/`) are Markdown step-by-step guidelines the agent reads
+via `workflow_get` (or the `playbook://` resources). Each step says what it's for,
+how to recognise the page, which tools to call, how to verify, and *when to stop and
+ask you*. The shared `_contract.md` defines the observe→act→verify loop and the
+safety rules. When a step breaks, the agent diagnoses it with you, calls
+`workflow_propose_fix` (returns a diff, writes nothing), shows you the diff, and only
+on your "yes" calls `workflow_apply_fix` — so the next run is more reliable, and you
+stay in the loop on what gets "learned".
+
+**Resources:** `playbook://…`, `guideline://seek-answers`, `run://current`,
+`profile://json`. **Prompts:** `seek-apply`, `seek-login`, `seek-search-triage`
+(each briefs the agent with the contract + the relevant playbook).
+
+Submission stays **double-gated**: `seek_apply_submit` clicks "Submit application"
+only with an explicit per-job `humanApproved:true` *or* `SEEK_ALLOW_SUBMIT=true`.
+By default every run stops at the review page.
+
 ## Profile format
 
 Write your CV in `profile/profile.md` as free-form markdown. The

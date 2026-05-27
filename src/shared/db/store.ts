@@ -6,6 +6,8 @@ import { config } from '../config.js';
 import { createLogger } from '../logger.js';
 import { SCHEMA_TABLES_SQL, SCHEMA_INDEXES_SQL, MIGRATIONS } from './schema.js';
 import type {
+  AgentRun,
+  AgentRunStatus,
   ApplicationRow,
   ApplicationStatus,
   ApplyAnswer,
@@ -65,6 +67,32 @@ type AppRow = {
   apply_error: string | null;
   updated_at: string;
 };
+
+type AgentRunRow = {
+  run_id: string;
+  workflow: string | null;
+  goal: string | null;
+  vars_json: string | null;
+  current_step: string | null;
+  status: string;
+  steps_json: string | null;
+  started_at: string;
+  updated_at: string;
+};
+
+function rowToAgentRun(row: AgentRunRow): AgentRun {
+  return {
+    runId: row.run_id,
+    workflow: row.workflow,
+    goal: row.goal,
+    vars: row.vars_json ? (JSON.parse(row.vars_json) as Record<string, unknown>) : {},
+    currentStep: row.current_step,
+    status: row.status as AgentRunStatus,
+    steps: row.steps_json ? (JSON.parse(row.steps_json) as Array<{ ts: string; note: string }>) : [],
+    startedAt: row.started_at,
+    updatedAt: row.updated_at,
+  };
+}
 
 function rowToJob(row: JobRow): Job {
   return {
@@ -450,6 +478,43 @@ class DbStore {
     this.db
       .prepare(`DELETE FROM selector_cache WHERE flow_id = ? AND step_id = ? AND page_sig = ?`)
       .run(flowId, stepId, pageSig);
+  }
+
+  // ─── MCP agent runs (durable workflow progress) ──────────────────────
+  saveAgentRun(run: AgentRun): void {
+    this.db
+      .prepare(`
+        INSERT INTO agent_runs (run_id, workflow, goal, vars_json, current_step, status, steps_json, started_at, updated_at)
+        VALUES (@run_id, @workflow, @goal, @vars_json, @current_step, @status, @steps_json, @started_at, datetime('now'))
+        ON CONFLICT(run_id) DO UPDATE SET
+          workflow = excluded.workflow,
+          goal = excluded.goal,
+          vars_json = excluded.vars_json,
+          current_step = excluded.current_step,
+          status = excluded.status,
+          steps_json = excluded.steps_json,
+          updated_at = datetime('now')
+      `)
+      .run({
+        run_id: run.runId,
+        workflow: run.workflow,
+        goal: run.goal,
+        vars_json: JSON.stringify(run.vars ?? {}),
+        current_step: run.currentStep,
+        status: run.status,
+        steps_json: JSON.stringify(run.steps ?? []),
+        started_at: run.startedAt,
+      });
+  }
+
+  getAgentRun(runId: string): AgentRun | null {
+    const row = this.db.prepare(`SELECT * FROM agent_runs WHERE run_id = ?`).get(runId) as AgentRunRow | undefined;
+    return row ? rowToAgentRun(row) : null;
+  }
+
+  latestAgentRun(): AgentRun | null {
+    const row = this.db.prepare(`SELECT * FROM agent_runs ORDER BY updated_at DESC LIMIT 1`).get() as AgentRunRow | undefined;
+    return row ? rowToAgentRun(row) : null;
   }
 
   // ─── scan history ────────────────────────────────────────────────────

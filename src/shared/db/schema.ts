@@ -82,6 +82,21 @@ CREATE TABLE IF NOT EXISTS selector_cache (
   updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (flow_id, step_id, page_sig)
 );
+
+-- MCP run-state: durable progress for an agent-driven workflow run, so the
+-- agent can resume ("where were we?") and the run survives a server restart.
+-- Secrets are NEVER stored here (vars_json holds e.g. jobId only).
+CREATE TABLE IF NOT EXISTS agent_runs (
+  run_id        TEXT PRIMARY KEY,
+  workflow      TEXT,            -- e.g. 'seek/quick-apply'
+  goal          TEXT,            -- the user's natural-language intent
+  vars_json     TEXT,            -- {jobId, ...} (no secrets)
+  current_step  TEXT,            -- step-id pointer into the playbook
+  status        TEXT NOT NULL DEFAULT 'running', -- running|awaiting_human|paused|done|failed
+  steps_json    TEXT,            -- ordered outcome notes (queryable mirror of the journal)
+  started_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `;
 
 export const SCHEMA_INDEXES_SQL = `

@@ -66,7 +66,7 @@ async function chooseOption(page: Page, labelRe: RegExp): Promise<void> {
   await page.waitForTimeout(500);
 }
 
-async function fillDocuments(page: Page, opts: QuickApplyOptions): Promise<void> {
+export async function fillDocuments(page: Page, opts: QuickApplyOptions): Promise<void> {
   // Resume: "Select a resumé" → choose the pre-uploaded one from the dropdown.
   await chooseOption(page, /select a resum/i);
   const select = page.locator('select').first();
@@ -94,10 +94,20 @@ async function fillDocuments(page: Page, opts: QuickApplyOptions): Promise<void>
   }
 }
 
-async function clickContinue(page: Page): Promise<void> {
+export async function clickContinue(page: Page): Promise<void> {
   await page.getByRole('button', { name: /continue/i }).first().click({ timeout: 10_000 });
   await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
   await page.waitForTimeout(1200);
+}
+
+/**
+ * Click the real "Submit application" button. Caller MUST enforce the submit
+ * gate (per-job human approval, or SEEK_ALLOW_SUBMIT) before invoking this.
+ */
+export async function clickSubmit(page: Page): Promise<void> {
+  await page.getByRole('button', { name: /submit application/i }).first().click({ timeout: 12_000 });
+  await page.waitForLoadState('networkidle', { timeout: 12_000 }).catch(() => {});
+  await page.waitForTimeout(2000);
 }
 
 /**
@@ -105,7 +115,7 @@ async function clickContinue(page: Page): Promise<void> {
  * nav (which always shows every stage label). 'documents' has the resume-method
  * radios; 'review' has a "Submit application" action button.
  */
-async function detectStep(page: Page): Promise<QuickApplyStep> {
+export async function detectStep(page: Page): Promise<QuickApplyStep> {
   return page.evaluate(() => {
     if (document.querySelector('input[name="resume-method"]')) return 'documents';
     const btns = Array.from(document.querySelectorAll('button')).map((b) => (b.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase());
