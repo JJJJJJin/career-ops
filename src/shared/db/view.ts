@@ -5,23 +5,6 @@ import path from 'node:path';
 import { config } from '../config.js';
 import { db } from './store.js';
 
-const RECOMMENDATION_EMOJI: Record<string, string> = {
-  STRONG: '✅',
-  BORDERLINE: '⚠️',
-  SKIP: '❌',
-  NOT_FOR_YOU: '🚫',
-};
-
-function fmtScore(s: number | null): string {
-  if (s === null) return '—';
-  return `${s.toFixed(1)}/5`;
-}
-
-function fmtRec(rec: string | null): string {
-  if (!rec) return '—';
-  return `${RECOMMENDATION_EMOJI[rec] ?? ''} ${rec}`.trim();
-}
-
 function escapePipes(s: string | null | undefined): string {
   if (!s) return '';
   return s.replace(/\|/g, '\\|').replace(/\n/g, ' ');
@@ -34,18 +17,18 @@ export function renderTracker(): string {
 Generated from \`${path.relative(config.repoRoot, config.paths.dbPath)}\` — do not hand-edit.
 Last updated: ${new Date().toISOString()}
 
-| Date | Company | Role | Score | Rec | Status | Job ID |
-|------|---------|------|-------|-----|--------|--------|`;
+| 最后操作日期 | 公司 | 工作职位 | URL | 是否已申请 | Quick Apply | Job ID |
+|------|------|------|------|------|------|------|`;
 
   const body = rows
     .map(({ job, application }) => {
-      const date = (application?.updatedAt ?? job.fetchedAt).slice(0, 10);
+      const date = (application?.appliedAt ?? application?.updatedAt ?? job.fetchedAt).slice(0, 10);
       const company = escapePipes(job.company ?? '—');
       const role = escapePipes(job.title);
-      const score = fmtScore(application?.scoreOutOf5 ?? null);
-      const rec = fmtRec(application?.recommendation ?? null);
-      const status = application?.status ?? 'new';
-      return `| ${date} | ${company} | ${role} | ${score} | ${rec} | ${status} | ${job.jobId} |`;
+      const url = escapePipes(job.url);
+      const applied = application?.status === 'applied' ? '是' : '否';
+      const quickApply = job.applyType === 'quick' ? '是' : '否';
+      return `| ${date} | ${company} | ${role} | ${url} | ${applied} | ${quickApply} | ${job.jobId} |`;
     })
     .join('\n');
 

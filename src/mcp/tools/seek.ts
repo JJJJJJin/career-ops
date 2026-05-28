@@ -115,6 +115,10 @@ export function registerSeekTools(server: McpServer): void {
       guard(async () => {
         const job = db.getJob(jobId);
 
+        // Ensure an application row exists so every job (including external)
+        // appears in the tracker. Idempotent — no-op if the row already exists.
+        db.ensureApplication(jobId);
+
         // 1) Already applied per our records → skip (deterministic).
         const app = db.getApplication(jobId);
         if (app && (app.status === 'applied' || app.applyState === 'submitted')) {
@@ -127,6 +131,10 @@ export function registerSeekTools(server: McpServer): void {
         // 2) Only quick-apply gets driven. External ("Apply on company site") is
         // NOT navigated — it's reported so the human applies manually.
         if (job?.applyType === 'external') {
+          db.updateApplicationFields(jobId, {
+            applyMethod: 'external',
+            applyState: 'external_pending',
+          });
           return ok(
             { jobId, external: true, step: 'external', externalUrl: job.externalApplyUrl ?? job.url, title: job.title ?? undefined, company: job.company ?? undefined },
             `EXTERNAL apply — do NOT drive the wizard. Record for the user to apply manually: ${job.externalApplyUrl ?? job.url}`,

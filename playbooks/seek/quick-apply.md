@@ -16,13 +16,19 @@ Vars: `{{jobId}}`, `{{resumeFilename}}` (basename of the tailored resume PDF), `
 ## open the application
 **Goal:** load the wizard and learn the starting stage — only for quick-apply jobs.
 **Do:** `seek_apply_open { jobId }`. Read the returned `step`.
+**Dual check:** the tool checks **both our database** (`status === 'applied'` / `applyState ===
+'submitted'`) AND the **live page** (for an "Applied" / "you've already applied" badge). If either
+fires, `alreadyApplied: true` is returned — SKIP it, do not re-apply. The tool also writes an
+application row (status `'new'`) for every job it opens, so external jobs appear in the tracker.
 **Verify:** `step` is one of documents/questions/profile/review.
 **If unexpected:**
 - `alreadyApplied: true` (`step: "already_applied"`) → you already applied to this job (our
-  records, or the page shows "Applied" where the apply button should be). SKIP it — do not re-apply.
+  DB records `status='applied'` / `applyState='submitted'`, or the page shows "Applied" where
+  the apply button should be). SKIP it — do not re-apply.
 - `external: true` / `step: "external"` → this job redirects to the employer's own site; do NOT
-  drive the wizard. Record `{ title, company, externalUrl }` for the user to apply manually (in a
-  batch, add it to the `external[]` report).
+  drive the wizard. The tool has written an application row (`applyMethod='external'`,
+  `applyState='external_pending'`) to the DB. Record `{ title, company, externalUrl }` for the
+  user to apply manually (in a batch, add it to the `external[]` report).
 - `step: "unknown"` → `browser_observe` + `browser_screenshot`. If you SEE an "Applied" badge /
   "you've already applied" (no apply button/wizard), treat it as already-applied and skip.
   Otherwise STOP, show the user, and propose a detection fix.
@@ -97,10 +103,23 @@ which resume, the cover letter, and every employer answer. Note "You answered N 
 **Goal:** submit with authority. Default is the user submitting MANUALLY, auto-detected.
 **Manual submit (default / preferred):** tell the user to click "Submit application" in the window
 themselves, then call `seek_apply_wait_submitted { jobId }`. It polls for SEEK's "Your application
-has been sent" confirmation; the instant the user submits, it records the job applied and returns
-`submitted: true` → proceed to the next job. If it returns `submitted: false` (bounded ~45s), the
-user is still reviewing/editing (that never false-triggers) — call it AGAIN to keep waiting, unless
-they said skip. You never click submit in this mode.
+has been sent" confirmation.
+
+**Wait loop (MUST run until resolved):**
+1. Call `seek_apply_wait_submitted { jobId }`.
+2. **If `submitted: true`:** the job is recorded as applied. Run `run_note` with success.
+   Then → proceed to the **next job**. (remainingSlots was already decremented at upload time; slot
+   cleanup happens ONLY in **choose documents** pre-fill check, never here.)
+3. **If `submitted: false` (timed out, ~45s):** the page may have changed. Call
+   `seek_apply_detect_step`:
+   - **Still `review`:** the user is still editing/reviewing. Tell the user to submit when ready
+     and call `seek_apply_wait_submitted` AGAIN (go back to step 1). Keep waiting unless the user
+     explicitly says skip.
+   - **NOT `review` (any other stage / unknown):** the user navigated away — they chose NOT to
+     submit this job. Do NOT mark it applied. Re-apply this same job: go back to
+     **open the application** and re-drive the wizard from scratch. During re-apply, resume upload
+     is idempotent (already on SEEK), so remainingSlots stays unchanged.
+
 **Agent submit (only if authorized):** `seek_apply_submit { jobId, humanApproved: true }` after an
 explicit per-job yes, or unattended only when `SEEK_ALLOW_SUBMIT=true`. Never set `humanApproved`
 without a real yes. With no authority it parks at review (`filled_pending_review`).
