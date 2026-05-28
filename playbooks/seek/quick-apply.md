@@ -30,12 +30,39 @@ Vars: `{{jobId}}`, `{{resumeFilename}}` (basename of the tailored resume PDF), `
 ## choose documents
 **Goal:** attach the tailored resume AND cover letter as PDFs (HR sees the filenames).
 **You're here when:** `seek_apply_detect_step` → "documents".
-**Do:** `seek_apply_fill_documents { jobId }` — by default it UPLOADS both PDFs resolved from
-`output/seek/<dir>/<base>-resume.pdf` and `-cover_letter.pdf` (the files `apply_job` generated).
-No `seek_resume_rotate` needed — uploading per-application avoids SEEK's 10-resume cap entirely.
-Then `seek_apply_advance`.
-**Verify:** advance returns the next stage (questions / profile / review). The page shows
-"… attached" under each section.
+
+**Resume-slot lifecycle (SEEK cap = 10):**
+
+1. **Pre-batch (once, before the first job):** call `seek_resume_list`. Note `slotsFree`.
+   - If `slotsFree == 0`: call `seek_resume_delete_old` immediately, then re-call
+     `seek_resume_list` — you now have `cap - 1 = 9` free slots (the protected default
+     takes one). Track `remainingSlots = slotsFree`.
+   - If `slotsFree > 0`: track `remainingSlots = slotsFree`. Proceed.
+
+2. **Before filling documents for each job:** if `remainingSlots == 0`, call
+   `seek_resume_delete_old`, then re-call `seek_resume_list` and reset
+   `remainingSlots = slotsFree`.
+
+3. **Fill:** `seek_apply_fill_documents { jobId }` uploads the resume PDF.
+
+4. **After a successful upload:** `remainingSlots = remainingSlots - 1`. If this
+   reaches 0, the *next* job's pre-fill check will trigger cleanup (step 2).
+
+Keep `remainingSlots` in the run-state `vars` so it survives across jobs within a batch.
+
+**Verify uploaded files match on the review page:**
+
+After reaching the review page, call `browser_observe` and check the filenames shown
+for resume and cover letter. They MUST share the same base name — only the suffix differs
+(e.g. `Jincheng_Deng-Software-Engineer-0452285117-resume.pdf` and
+`Jincheng_Deng-Software-Engineer-0452285117-cover_letter.pdf`). If the base names differ,
+the wrong resume was attached. In that case:
+- **Abort this application** (do NOT submit — close the tab or navigate away).
+- Call `seek_resume_delete_old` to purge all non-protected resumes.
+- Re-call `seek_resume_list` and reset `remainingSlots = slotsFree`.
+- Re-run `apply_job <jobId>` to regenerate fresh tailored PDFs.
+- Re-apply from `seek_apply_open` for this same jobId.
+
 **If unexpected:** if a PDF path is missing, run `apply_job <jobId>` first. The documents UI
 uses custom radios (Upload / Select / Write / Don't include) that `browser_observe` can't see —
 do NOT try to click them atomically; the tool handles them by label text + the stable file
