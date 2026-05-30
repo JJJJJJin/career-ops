@@ -280,30 +280,43 @@ export function registerBrowserTools(server: McpServer): void {
     async ({ url, reextract, tab }) =>
       guard(async () => {
         const page = await sessions.getPage(tab);
-        if (url) {
-          await actions.goto(page, url);
-          await settle(page);
-        }
-        const currentUrl = page.url();
 
-        const handoff = async (signal: string, extra: Record<string, unknown>) => {
+        const handoff = async (signal: string, atUrl: string, extra: Record<string, unknown>) => {
           const msg =
-            `Anti-bot verification ("${signal}") on ${currentUrl}. The live browser window is open — ` +
+            `Anti-bot verification ("${signal}") on ${atUrl}. The live browser window is open — ` +
             `solve the challenge there, then call page_extract again.`;
-          const data = { status: 'needs_human_input', kind: 'text', url: currentUrl, tab: tab ?? 'active', signal, ...extra };
+          const data = { status: 'needs_human_input', kind: 'text', url: atUrl, tab: tab ?? 'active', signal, ...extra };
           const shot = await sessions.screenshot(tab).catch(() => null);
           return shot
             ? withScreenshot(shot.toString('base64'), `NEEDS HUMAN INPUT (text): ${msg}`, data)
             : needsHumanInput(msg, 'text', data);
         };
 
+        // If the URL belongs to a known job source, let the source's extractor
+        // OWN the navigation — it knows the anti-bot-safe path (e.g. Indeed uses
+        // the /jobs SERP panel instead of the walled /viewjob page). Pre-goto'ing
+        // the raw URL here would hit that wall before the extractor ever runs.
+        const targetSource = url ? detectSource(url) : null;
+        if (targetSource) {
+          const job = await targetSource.extract(url!, { reextract, page });
+          if (textLooksLikeChallenge(job.title)) return handoff(job.title, page.url(), { source: targetSource.name });
+          return ok({ mode: 'job', source: targetSource.name, job }, `extracted ${job.jobId}: ${job.title}`);
+        }
+
+        // Generic page (or no url given): navigate if asked, then harvest.
+        if (url) {
+          await actions.goto(page, url);
+          await settle(page);
+        }
+        const currentUrl = page.url();
+
         const challenge = await detectChallenge(page);
-        if (challenge.challenged) return handoff(challenge.signal ?? 'verification', {});
+        if (challenge.challenged) return handoff(challenge.signal ?? 'verification', currentUrl, {});
 
         const source = detectSource(currentUrl);
         if (source) {
           const job = await source.extract(currentUrl, { reextract, page });
-          if (textLooksLikeChallenge(job.title)) return handoff(job.title, { source: source.name });
+          if (textLooksLikeChallenge(job.title)) return handoff(job.title, currentUrl, { source: source.name });
           return ok({ mode: 'job', source: source.name, job }, `extracted ${job.jobId}: ${job.title}`);
         }
 
