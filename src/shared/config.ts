@@ -81,6 +81,11 @@ export const config = {
   browser: {
     headless: parseBool(process.env.HEADLESS, true),
     slowMoMs: parseInt10(process.env.SLOW_MO_MS, 120),
+    // Persistent profile dir for the long-lived MCP browser. Keeping cookies
+    // (incl. a Cloudflare cf_clearance) across runs means anti-bot checks are
+    // passed once, not every launch. NOT your real Chrome profile — a dedicated
+    // dir Playwright owns. Gitignored (under data/).
+    userDataDir: resolvePath(process.env.BROWSER_USER_DATA_DIR, 'data/browser-profile'),
   },
 
   seek: {

@@ -2,6 +2,7 @@
 // JobSource implementation; downstream tools (evaluate-job, generate-*, etc.)
 // work against `Job` and never know which platform produced the data.
 
+import type { Page } from 'playwright';
 import type { Job, JobSearchStub } from '../db/types.js';
 
 export type { Job, JobSearchStub };
@@ -26,6 +27,13 @@ export type JobExtractOptions = {
   noLlm?: boolean;
   noStore?: boolean;
   reextract?: boolean;
+  /**
+   * Reuse an already-open live page (the stateful MCP browser session) instead
+   * of launching a throwaway browser. Critical for anti-bot-heavy sources like
+   * Indeed: a warmed-up, cookie-bearing session gets through where a cold
+   * headless launch is Cloudflare-challenged.
+   */
+  page?: Page;
 };
 
 /**

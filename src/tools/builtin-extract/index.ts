@@ -27,6 +27,8 @@ export type ExtractOptions = {
   noLlm?: boolean;
   noStore?: boolean;
   reextract?: boolean;
+  /** Reuse an already-open live page instead of a throwaway browser (anti-bot). */
+  page?: Page;
 };
 
 export const BUILTIN_JOB_ID_PREFIX = 'builtin:';
@@ -310,7 +312,9 @@ export async function builtinExtract(url: string, opts: ExtractOptions = {}): Pr
     }
   }
 
-  const job = await withBrowser((session) => extractOnPage(session.page, url, opts));
+  const job = opts.page
+    ? await extractOnPage(opts.page, url, opts)
+    : await withBrowser((session) => extractOnPage(session.page, url, opts));
 
   if (!opts.noStore) {
     db.upsertJob(job);

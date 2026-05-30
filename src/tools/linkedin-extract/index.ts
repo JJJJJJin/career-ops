@@ -22,6 +22,8 @@ export type ExtractOptions = {
   noLlm?: boolean;
   noStore?: boolean;
   reextract?: boolean;
+  /** Reuse an already-open live page instead of a throwaway browser (anti-bot). */
+  page?: Page;
 };
 
 export const LINKEDIN_JOB_ID_PREFIX = 'linkedin:';
@@ -298,7 +300,9 @@ export async function linkedinExtract(url: string, opts: ExtractOptions = {}): P
     }
   }
 
-  const job = await withBrowser((session) => extractOnPage(session.page, url, opts));
+  const job = opts.page
+    ? await extractOnPage(opts.page, url, opts)
+    : await withBrowser((session) => extractOnPage(session.page, url, opts));
 
   if (!opts.noStore) {
     db.upsertJob(job);

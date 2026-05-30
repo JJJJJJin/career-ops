@@ -21,6 +21,8 @@ export type ExtractOptions = {
   noStore?: boolean;
   /** Force-refetch even if already cached. */
   reextract?: boolean;
+  /** Reuse an already-open live page instead of a throwaway browser (anti-bot). */
+  page?: Page;
 };
 
 export function extractJobIdFromUrl(url: string): string {
@@ -400,7 +402,9 @@ export async function seekExtract(url: string, opts: ExtractOptions = {}): Promi
     }
   }
 
-  const job = await withBrowser((session) => extractOnPage(session.page, url, opts));
+  const job = opts.page
+    ? await extractOnPage(opts.page, url, opts)
+    : await withBrowser((session) => extractOnPage(session.page, url, opts));
 
   if (!opts.noStore) {
     db.upsertJob(job);

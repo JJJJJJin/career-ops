@@ -63,7 +63,7 @@ export function registerSeekTools(server: McpServer): void {
     },
     async () =>
       guard(async () => {
-        const resumes = await getSavedResumes(await sessions.ensure());
+        const resumes = await getSavedResumes(await sessions.ensureResumeTab());
         const cap = RESUME.limit;
         const sub = config.seek.protectedResume.trim().toLowerCase();
         const protectedPresent = sub ? resumes.some((r) => r.filename.toLowerCase().includes(sub)) : false;
@@ -87,7 +87,7 @@ export function registerSeekTools(server: McpServer): void {
       inputSchema: { pdfPath: z.string().describe('Absolute path to the tailored resume PDF.') },
     },
     async ({ pdfPath }) =>
-      guard(async () => ok((await rotateUploadResume(await sessions.ensure(), pdfPath)) as unknown as Record<string, unknown>)),
+      guard(async () => ok((await rotateUploadResume(await sessions.ensureResumeTab(), pdfPath)) as unknown as Record<string, unknown>)),
   );
 
   server.registerTool(
@@ -98,7 +98,7 @@ export function registerSeekTools(server: McpServer): void {
         'Open the SEEK resume manager and delete EVERY saved resume except your protected default (the one whose filename contains SEEK_PROTECTED_RESUME). Destructive and immediate — no preview. If the default is not found, deletes all and reports that you must upload it manually. Refuses to run if SEEK_PROTECTED_RESUME is unset.',
     },
     async () => guard(async () => {
-      const r = await deleteOldResumes(await sessions.ensure());
+      const r = await deleteOldResumes(await sessions.ensureResumeTab());
       return ok(r as unknown as Record<string, unknown>, r.message);
     }),
   );
