@@ -53,6 +53,36 @@ export function canonicalIndeedUrl(input: string): string {
   return input.split('?')[0] ?? input;
 }
 
+/** Pull the bare jk out of any Indeed URL or `indeed:<jk>` id. */
+function jkOf(input: string): string | null {
+  const m = input.match(/[?&](?:jk|vjk)=([A-Za-z0-9]+)/) ?? input.match(/^indeed:([A-Za-z0-9]+)$/);
+  if (m && m[1]) return m[1];
+  const tail = input.match(/-([A-Za-z0-9]{16})(?:[?#].*)?$/);
+  return tail && tail[1] ? tail[1] : null;
+}
+
+/**
+ * The search-results URL that renders a job's FULL JD in the right-hand detail
+ * panel via `&vjk=<jk>`. We navigate HERE instead of `/viewjob?jk=` because the
+ * standalone /viewjob page is Indeed's most heavily Cloudflare-protected
+ * endpoint (reliably walls), whereas the /jobs SERP is not and carries the same
+ * JD in-panel. If the original input was already a /jobs search URL, its
+ * q=/l= context is preserved; otherwise a bare vjk SERP is used.
+ */
+export function searchPanelUrl(input: string): string {
+  const jk = jkOf(input) ?? '';
+  const host = input.match(/https?:\/\/([^/]+)/)?.[1] ?? 'au.indeed.com';
+  // Preserve an existing SERP query string (minus any old vjk), then set vjk.
+  if (/\/jobs\?/.test(input)) {
+    const qs = (input.split('?')[1] ?? '')
+      .split('&')
+      .filter((p) => p && !/^vjk=/.test(p))
+      .join('&');
+    return `https://${host}/jobs?${qs}${qs ? '&' : ''}vjk=${jk}`;
+  }
+  return `https://${host}/jobs?vjk=${jk}`;
+}
+
 function htmlToText(html: string): string {
   return html
     .replace(/<\s*br\s*\/?\s*>/gi, '\n')
@@ -94,6 +124,8 @@ type PageData = {
   jsonLdRaw: string[];
   visibleText: string;
   title: string;
+  /** innerText of the SERP right-hand detail panel, when present. */
+  panelText: string;
 };
 
 async function readPageData(page: Page): Promise<PageData> {
@@ -114,8 +146,47 @@ async function readPageData(page: Page): Promise<PageData> {
       document.body;
     const visibleText = (desc as HTMLElement).innerText?.slice(0, 14000) ?? '';
 
-    return { jsonLdRaw, visibleText, title };
+    // The SERP detail panel (loaded via &vjk=) carries the full JD in-page.
+    const panel = document.querySelector('#jobsearch-ViewjobPaneWrapper');
+    const panelText = (panel as HTMLElement | null)?.innerText?.slice(0, 16000) ?? '';
+
+    return { jsonLdRaw, visibleText, title, panelText };
   });
+}
+
+/**
+ * Parse the SERP detail-panel innerText into fields. The panel reads roughly:
+ *   Return to Search Result / Job Post Details / <title> / - job post /
+ *   <company> / <location> / Apply with Indeed / Location / <location> / ...
+ *   Full job description / <body...> / Report job / Return to Search Result
+ */
+function parsePanel(panelText: string): { title: string; company: string | null; location: string | null; description: string } | null {
+  if (!panelText) return null;
+  const lines = panelText.split('\n').map((l) => l.trim()).filter(Boolean);
+  const hdr = lines.findIndex((l) => /^Job Post Details$/i.test(l));
+  const title = hdr >= 0 ? lines[hdr + 1] ?? '' : lines[0] ?? '';
+
+  let company: string | null = null;
+  let location: string | null = null;
+  if (hdr >= 0) {
+    // After title: optional "- job post", then company, then location.
+    let i = hdr + 2;
+    if (lines[i] && /^-\s*job post$/i.test(lines[i]!)) i += 1;
+    company = lines[i] ?? null;
+    location = lines[i + 1] ?? null;
+    if (location && /^Apply with Indeed$/i.test(location)) location = null;
+  }
+
+  // Description = everything from "Full job description" up to the trailing boilerplate.
+  const start = lines.findIndex((l) => /^Full job description$/i.test(l));
+  let description = '';
+  if (start >= 0) {
+    const rest = lines.slice(start + 1);
+    const end = rest.findIndex((l) => /^(Report job|Return to Search Result)$/i.test(l));
+    description = (end >= 0 ? rest.slice(0, end) : rest).join('\n').trim();
+  }
+  if (!title && !description) return null;
+  return { title: title || '', company, location, description };
 }
 
 function findJobPosting(jsonLdRaw: string[]): JsonLdJobPosting | null {
@@ -219,28 +290,37 @@ async function llmExtract(visibleText: string, title: string): Promise<LlmExtrac
 async function extractOnPage(page: Page, url: string, opts: ExtractOptions): Promise<Job> {
   const canonicalUrl = canonicalIndeedUrl(url);
   const jobId = extractIndeedJobIdFromUrl(canonicalUrl);
-  log.info({ jobId, url: canonicalUrl }, 'indeed-extract: navigating');
+  // Navigate to the SERP detail-panel URL (&vjk=), NOT /viewjob — the latter is
+  // the Cloudflare-walled endpoint. The panel carries the same full JD in-page.
+  const navUrl = searchPanelUrl(url);
+  log.info({ jobId, url: navUrl }, 'indeed-extract: navigating (search panel)');
 
   const navStart = Date.now();
-  await page.goto(canonicalUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  await page.goto(navUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   log.debug({ jobId, ms: Date.now() - navStart }, 'indeed-extract: DOM ready');
 
-  // Indeed renders the description block client-side after the initial HTML —
-  // wait for either JSON-LD or the description container before scraping.
+  // Wait for the detail panel (preferred) OR the legacy viewjob containers OR
+  // JSON-LD — whichever the page renders client-side.
   await page
-    .waitForSelector('script[type="application/ld+json"], #jobDescriptionText, [data-testid="jobsearch-JobComponent-description"]', {
+    .waitForSelector('#jobsearch-ViewjobPaneWrapper, script[type="application/ld+json"], #jobDescriptionText, [data-testid="jobsearch-JobComponent-description"]', {
       timeout: 15_000,
     })
     .catch(() => null);
 
   const data = await readPageData(page);
   const jsonLd = findJobPosting(data.jsonLdRaw);
+  const panel = parsePanel(data.panelText);
 
-  let title = jsonLd?.title ?? data.title;
+  // Prefer the panel (most reliable on the SERP), then JSON-LD, then headings.
+  let title = panel?.title || jsonLd?.title || data.title;
   const descriptionHtml = jsonLd?.description ?? null;
-  let description = descriptionHtml ? htmlToText(descriptionHtml) : '';
-  let company = companyFromJsonLd(jsonLd ?? {});
-  let location = locationFromJsonLd(jsonLd ?? {});
+  let description = (panel?.description && panel.description.length > 80)
+    ? panel.description
+    : descriptionHtml
+      ? htmlToText(descriptionHtml)
+      : '';
+  let company = panel?.company ?? companyFromJsonLd(jsonLd ?? {});
+  let location = panel?.location ?? locationFromJsonLd(jsonLd ?? {});
   let workType = workTypeFromJsonLd(jsonLd ?? {});
   let classification = classificationFromJsonLd(jsonLd ?? {});
   const salary = salaryFromJsonLd(jsonLd ?? {});

@@ -47,15 +47,25 @@ reuse a ref across a keystroke. Mis-clicks here come from stale refs.
 **Verify:** present the top matches (title + company + location); let the user pick which to
 tailor for, or proceed with the one(s) they named.
 
-## extract the chosen job's JD
-**Goal:** a full structured Job record in the DB.
-**Do:** for each chosen jk, `page_extract { url: "https://au.indeed.com/viewjob?jk=<jk>" }`.
-It navigates the live tab, returns {title, company, location, salary, description}, and
-stores the job (jobId `indeed:<jk>`).
-**Verify:** `description` is real JD text (hundreds of chars), not a challenge string.
-**If unexpected:** `status: "needs_human_input"` + screenshot → ask the user to solve the
-check in the open window, then call `page_extract` again for the SAME url. Never invent a jk
-or swap URLs. The session stays open server-side.
+## extract the chosen job's JD (search panel, anti-bot safe)
+**Goal:** a full structured Job record in the DB, WITHOUT tripping Cloudflare.
+**Why:** the standalone `/viewjob?jk=...` page is Indeed's most heavily-protected endpoint
+and reliably walls (often an un-passable challenge loop). The `/jobs` SERP is not protected
+the same way and carries the full JD in its right-hand detail panel (loaded via `&vjk=`).
+The extractor now navigates THERE and reads `#jobsearch-ViewjobPaneWrapper`, so:
+**Do:** `page_extract { url: "https://au.indeed.com/viewjob?jk=<jk>" }`. Despite the
+viewjob-looking URL, the indeed extractor internally rewrites it to
+`/jobs?...&vjk=<jk>` and scrapes the SERP panel. It returns {title, company, location,
+salary, description} and stores the job as `indeed:<jk>`. (Passing the original
+`/jobs?q=...&vjk=<jk>` URL also works and preserves your search context.)
+**Verify:** `description` is real JD text (hundreds–thousands of chars: role + requirements),
+not empty and not a "Verify you are human" string.
+**If unexpected:** `status: "needs_human_input"` + screenshot (a wall slipped through anyway)
+→ ask the user to solve it in the open window, then call `page_extract` again for the SAME
+url. Never invent a jk. The session stays open server-side.
+**Manual fallback (only if page_extract keeps failing):** `browser_goto` the
+`/jobs?q=...&vjk=<jk>` URL yourself → `browser_observe` → `browser_read` the
+`#jobsearch-ViewjobPaneWrapper` ("Job Post Details") node to capture the JD text.
 
 ## generate the tailored resume
 **Goal:** the actual deliverable.
