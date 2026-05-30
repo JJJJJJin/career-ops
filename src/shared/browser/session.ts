@@ -67,14 +67,17 @@ function stealthArgs(extra: string[] = []): string[] {
   return args;
 }
 
+// Headless Chromium sends "HeadlessChrome" in the UA, which is a dead
+// giveaway to Cloudflare. Always set a plausible non-headless UA.
+const DEFAULT_UA =
+  'Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36';
+
 function contextOptions(opts: LaunchOptions): Record<string, unknown> {
   return {
     viewport: { width: 1366, height: 900 },
     locale: 'en-AU',
     timezoneId: 'Australia/Sydney',
-    // Let real Chrome send its own UA unless one is explicitly forced — a
-    // hardcoded UA that disagrees with the engine is itself a bot signal.
-    ...(opts.userAgent ? { userAgent: opts.userAgent } : {}),
+    userAgent: opts.userAgent ?? DEFAULT_UA,
   };
 }
 
@@ -86,26 +89,43 @@ export async function launchSession(opts: LaunchOptions = {}): Promise<BrowserSe
   const ignoreDefaultArgs = ['--enable-automation'];
   const persistent = opts.userDataDir ? { userDataDir: opts.userDataDir } : null;
 
-  // Prefer real Google Chrome; fall back to the bundled Chromium if absent.
-  const channels: Array<'chrome' | undefined> = ['chrome', undefined];
+  // Collect candidate launch configs by platform.
+  // Priority: system Chrome/Chromium → real Google Chrome → bundled.
+  // System Chromium on RPi has better stealth against Cloudflare than the
+  // bundled Playwright Chromium.
+  const candidates: Array<Record<string, unknown>> = [];
+  const systemChromePaths: string[] = [];
+  if (process.platform === 'linux' && process.arch === 'arm64') {
+    // Raspberry Pi — system chromium package
+    systemChromePaths.push('/usr/bin/chromium');
+  } else if (process.platform === 'darwin') {
+    // macOS — standard Chrome install
+    systemChromePaths.push('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
+  }
+  for (const p of systemChromePaths) {
+    if (fs.existsSync(p)) {
+      candidates.push({ executablePath: p });
+    }
+  }
+  // If no system path found (or it doesn't exist), fall back to channel detection
+  // and ultimately the bundled Playwright Chromium.
+  candidates.push({ channel: 'chrome' as const }, {});
+
   let lastErr: unknown;
-  for (const channel of channels) {
+  for (const extra of candidates) {
     try {
       if (persistent) {
         const context = await chromium.launchPersistentContext(persistent.userDataDir, {
-          channel,
-          headless,
-          slowMo,
-          args,
-          ignoreDefaultArgs,
+          headless, slowMo, args, ignoreDefaultArgs,
+          ...extra,
           ...contextOptions(opts),
         });
         await context.addInitScript(STEALTH_INIT);
         const page = context.pages()[0] ?? (await context.newPage());
-        log.debug({ channel: channel ?? 'chromium', persistent: true }, 'browser: launched (persistent)');
+        log.debug({ executable: extra.executablePath ?? extra.channel ?? 'bundled', persistent: true }, 'browser: launched');
         return { browser: context.browser(), context, page };
       }
-      const browser = await chromium.launch({ channel, headless, slowMo, args, ignoreDefaultArgs });
+      const browser = await chromium.launch({ headless, slowMo, args, ignoreDefaultArgs, ...extra });
       const hasState = !!opts.storageStatePath && fs.existsSync(opts.storageStatePath);
       const context = await browser.newContext({
         ...contextOptions(opts),
@@ -113,11 +133,11 @@ export async function launchSession(opts: LaunchOptions = {}): Promise<BrowserSe
       });
       await context.addInitScript(STEALTH_INIT);
       const page = await context.newPage();
-      log.debug({ channel: channel ?? 'chromium', persistent: false, storageState: hasState }, 'browser: launched');
+      log.debug({ executable: extra.executablePath ?? extra.channel ?? 'bundled', persistent: false, storageState: hasState }, 'browser: launched');
       return { browser, context, page };
     } catch (err) {
       lastErr = err;
-      log.warn({ channel: channel ?? 'chromium', err: (err as Error).message }, 'browser: launch attempt failed');
+      log.warn({ executable: extra.executablePath ?? extra.channel ?? 'bundled', err: (err as Error).message }, 'browser: launch attempt failed');
     }
   }
   throw lastErr;
