@@ -81,10 +81,17 @@ export const config = {
   browser: {
     headless: parseBool(process.env.HEADLESS, true),
     slowMoMs: parseInt10(process.env.SLOW_MO_MS, 120),
-    // Persistent profile dir for the long-lived MCP browser. Keeping cookies
-    // (incl. a Cloudflare cf_clearance) across runs means anti-bot checks are
-    // passed once, not every launch. NOT your real Chrome profile — a dedicated
-    // dir Playwright owns. Gitignored (under data/).
+    // Persist the browser profile across launches? Default OFF = a fresh,
+    // ephemeral context every launch (like opening an incognito window) — no
+    // accumulated cookies/cf_clearance, no profile-lock or stale-reputation
+    // baggage. What actually gets us past Cloudflare is the real-Chrome+stealth
+    // fingerprint, not stored cookies; persistence only lets you skip a check
+    // you already passed, at the cost of carrying any flags forward too.
+    // Turn ON (BROWSER_PERSIST=true) to keep a warm profile that passes the
+    // human-check once then reuses cf_clearance.
+    persist: parseBool(process.env.BROWSER_PERSIST, false),
+    // Profile dir used only when persist is on. NOT your real Chrome profile —
+    // a dedicated dir Playwright owns. Gitignored (under data/).
     userDataDir: resolvePath(process.env.BROWSER_USER_DATA_DIR, 'data/browser-profile'),
   },
 

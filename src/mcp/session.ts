@@ -94,10 +94,14 @@ export class SessionManager {
     if (this.launching) return this.launching;
     this.launching = (async () => {
       log.info({ headless: this.headless }, 'launching browser session');
+      // Ephemeral by default (fresh context each launch, like incognito). The
+      // SEEK login is still seeded from its storageState file — that only
+      // carries SEEK-domain cookies, so Indeed/etc. stay clean while SEEK stays
+      // signed in. Set BROWSER_PERSIST=true to keep a warm on-disk profile.
       const session = await launchSession({
         headless: this.headless,
         storageStatePath: config.seek.authStatePath,
-        userDataDir: config.browser.userDataDir,
+        ...(config.browser.persist ? { userDataDir: config.browser.userDataDir } : {}),
       });
       this.browser = session.browser;
       this.context = session.context;
