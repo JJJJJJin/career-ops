@@ -1,61 +1,84 @@
-# Playbook: SEEK batch apply (CSV-driven)
+# Playbook: SEEK batch apply (multi-tab)
 
-Apply to a batch of jobs from a CSV. Each row is `company, title, url, score` (a header row may be
-present — skip it). Route by **score** (threshold default **4** = the system's STRONG cutoff):
+Prepare several SEEK applications in one logged-in browser, **one tab per job**,
+leaving each parked at its own review page so the user can go tab-by-tab and
+click Submit. Resume-slot management runs on its own dedicated tab and never
+disturbs an in-progress application. Drive each job with the **quick-apply**
+playbook; this one is the multi-tab loop around it.
 
-- **score < 4 → AUTO-APPLY** (drive quick-apply, stop at review; the user clicks Submit, auto-detected).
-- **score ≥ 4 → GOOD FIT → SKIP entirely** (no apply, no draft, no generation). Just collect them and
-  remind the user in the final summary to apply to these themselves, carefully.
+## Why multi-tab
 
-Within the auto-apply (<4) set: only **quick-apply** jobs are driven; **external** (employer-site)
-jobs are recorded for manual apply; **already-applied** and **eligibility-blocked** jobs are skipped.
-Resume slots are managed by SEEK's real count so the 10-cap is never hit.
+All tabs share one browser context (one login). Each tab keeps its own
+perception snapshot, so refs never cross between jobs. A job parked at review in
+`apply:<jobId>` stays put while you prepare the next one in a fresh tab — and
+while the `resume` tab deletes/uploads resumes. This is what lets the user
+submit 10 prepared applications by visiting 10 tabs in turn.
 
-Preconditions: logged in (login playbook); protected default resume uploaded (`SEEK_PROTECTED_RESUME`).
-Submission stays the user's — each <4 quick-apply stops at review.
+## Preconditions
 
-Vars: `{{csv}}` (rows of company,title,url,score), `scoreThreshold` (default 4).
+- Logged in (run **seek/login** first; verify with `seek_login_status`).
+- The caller gives you a list of jobIds (or you query the DB for candidates).
+- For each job, `apply_job <jobId>` has been run so the tailored resume +
+  cover-letter PDFs exist on disk (the documents stage uploads them).
 
-## begin the run
-**Do:** parse the CSV into rows `{ company, title, url, score:number }` (skip a header row; parse
-score as a number). `run_begin { workflow: "seek/batch-apply", goal, vars: { count } }`. Keep three
-lists in your notes: `goodJobs[]` (score ≥ threshold), `external[]` (apply manually), and `skipped[]`
-(already-applied / eligibility / errors). You do NOT count applications — slot management reads
-SEEK's real count. Confirm login with `seek_login_status`.
+## Step 1 — Resolve the candidate list
 
-## set aside the good jobs (score ≥ threshold)
-**Goal:** good-fit jobs are the user's to apply by hand — SKIP them entirely here.
-**Do:** for each row with `score >= scoreThreshold`: do NOTHING (no `apply_job`, no generation, no
-wizard). Just add `{ company, title, url, score }` to `goodJobs[]` for the final report.
-**Why:** the user applies these from scratch; generating drafts wastes LLM and isn't wanted — just
-remind them in the summary.
+Decide which jobs to apply to:
+- If the user gave jobIds, use those in order.
+- Otherwise query the tracker for STRONG matches not yet applied: call
+  `query_jobs` (e.g. recommendation STRONG, status new) and take the top N the
+  user asked for.
 
-## clean up resumes first (for the auto-apply set)
-**Do:** `seek_resume_delete_old` (keeps only the protected default → 1/10).
-**If unexpected:** `defaultFound: false` → STOP, tell the user to upload their default first.
+Confirm the final list with the user before driving the browser. Start a run
+with `run_begin` (workflow "seek/batch-apply", vars `{ jobIds }`) so the batch
+is resumable.
 
-## auto-apply each job with score < threshold
-For each row with `score < scoreThreshold`, in order:
-1. **Prep (reuse if present):** if the resume + cover PDFs already exist (and not applied), reuse;
-   else `apply_job { jobIdOrUrl: url }` (idempotent — no LLM when cached, just re-renders PDFs).
-2. **Slot check:** `seek_resume_list`; if `slotsFree == 0`, `seek_resume_delete_old` first.
-3. **Open + route:** `seek_apply_open { jobId }` —
-   - `alreadyApplied: true` → `skipped[]` (already applied). Next.
-   - apply_job returned `skippedDueToEligibility` → `skipped[]` (eligibility). Next.
-   - `external: true` → `external[]`. Next.
-   - else (quick, not applied) → drive it.
-4. **Drive (seek/quick-apply):** `seek_apply_fill_documents { jobId }` (uploads BOTH PDFs) →
-   `seek_apply_advance` → `seek_apply_answer_questions` (ask the user for any unanswered; save to the
-   guideline; retry) → advance past profile → **review: summarize → `seek_apply_wait_submitted { jobId }`**
-   (the user clicks Submit; auto-detected → recorded applied; re-call while `submitted: false`; if the
-   user says skip → `skipped[]`). `run_note` each job.
-**Never** delete resumes mid-apply (between a job's upload and the user's submit) — only between jobs.
+## Step 2 — Prepare the resume tab + cleanup slots
 
-## final report
-**Do:** `run_end`. Report, clearly separated:
-- **✅ Submitted** — the <4 jobs the user submitted.
-- **★ GOOD JOBS — apply to these yourself (score ≥ threshold)** — `goodJobs[]`: company, title,
-  **clickable URL**, score. The agent skipped these on purpose; remind the user to apply by hand.
-- **External — apply manually** — `external[]`: title, company, URL.
-- **Skipped** — already-applied; eligibility-blocked (with reason); errors.
-Make every URL copy-pasteable.
+Call `seek_resume_delete_old` once at the start. It runs on the dedicated
+`resume` tab (created automatically, not activated) and deletes every saved
+resume except your protected default, so the rolling window has room. The
+`resume` tab now stays open for the whole batch.
+
+## Step 3 — For each job: open a tab and drive quick-apply to review
+
+For each jobId, in order:
+
+1. `tab_open` with `id: "apply:<jobId>"` and `label: "<company> — <role>"`.
+   This opens a fresh tab and makes it active. (Re-running with the same id
+   reuses the tab — safe for resumes.)
+2. Drive the **seek/quick-apply** playbook on this now-active tab:
+   `seek_apply_open <jobId>` → documents → questions → review. The
+   `seek_apply_*` tools act on the active tab, so no `tab` argument is needed —
+   just make sure this job's tab is active (it is, right after `tab_open`).
+3. If `seek_apply_open` reports `already_applied`, `tab_close` this tab and skip.
+   If it reports `external`, record it for manual handling, `tab_close`, skip.
+4. **STOP at review. Do NOT submit. Do NOT close the tab** — leave it parked so
+   the user can submit it later.
+5. `run_note` the outcome for this job (parked at review / skipped / errored).
+
+Resume rotation (`seek_resume_rotate`, called inside quick-apply) runs on the
+`resume` tab, so it never navigates the apply tab you just filled.
+
+If a job errors twice on the same step, STOP and tell the user; leave its tab
+open on the failing page so they can see it, and move on to the next job only
+with their go-ahead.
+
+## Step 4 — Hand off for submission
+
+When every job is prepared, call `tab_list` and show the user the parked tabs:
+each `apply:<jobId>` tab sitting at its review page. Tell them: review each tab
+and click Submit yourself (submission stays human-gated).
+
+For each tab the user submits, confirm with `seek_apply_wait_submitted <jobId>`
+(it detects the real success page and records the job as applied), then
+`tab_close` that tab. If the user authorized unattended submit for a specific
+job, you may `seek_apply_submit` with `humanApproved:true` on that job's active
+tab instead — never otherwise.
+
+## Step 5 — Close out
+
+When all tabs are resolved, summarise: how many reached review, how many were
+submitted, how many skipped/errored. Render the tracker if useful
+(`render_tracker`), then `run_end`. You may leave the `resume` tab open for the
+next batch or `tab_close` it.
