@@ -72,15 +72,19 @@ function jkOf(input: string): string | null {
 export function searchPanelUrl(input: string): string {
   const jk = jkOf(input) ?? '';
   const host = input.match(/https?:\/\/([^/]+)/)?.[1] ?? 'au.indeed.com';
-  // Preserve an existing SERP query string (minus any old vjk), then set vjk.
-  if (/\/jobs\?/.test(input)) {
-    const qs = (input.split('?')[1] ?? '')
-      .split('&')
-      .filter((p) => p && !/^vjk=/.test(p))
-      .join('&');
-    return `https://${host}/jobs?${qs}${qs ? '&' : ''}vjk=${jk}`;
-  }
-  return `https://${host}/jobs?vjk=${jk}`;
+  // Preserve an existing SERP query string (minus any old vjk).
+  let qs = /\/jobs\?/.test(input)
+    ? (input.split('?')[1] ?? '')
+        .split('&')
+        .filter((p) => p && !/^vjk=/.test(p))
+        .join('&')
+    : '';
+  // The detail panel only renders on a NON-empty SERP: a bare `/jobs?vjk=`
+  // (no q=) redirects to the empty homepage. We can't know the job's real
+  // keywords from a lone jk, so fall back to a broad q= — &vjk= still pins the
+  // panel to THIS job regardless of what the result list contains.
+  if (!/(^|&)q=[^&]/.test(qs)) qs = `${qs ? `${qs}&` : ''}q=developer`;
+  return `https://${host}/jobs?${qs}&vjk=${jk}`;
 }
 
 function htmlToText(html: string): string {
@@ -288,8 +292,11 @@ async function llmExtract(visibleText: string, title: string): Promise<LlmExtrac
 }
 
 async function extractOnPage(page: Page, url: string, opts: ExtractOptions): Promise<Job> {
-  const canonicalUrl = canonicalIndeedUrl(url);
-  const jobId = extractIndeedJobIdFromUrl(canonicalUrl);
+  // Derive the jk from jk=/vjk=/indeed:<jk> — canonicalIndeedUrl only sees jk=,
+  // so a vjk-style URL would otherwise yield a garbage jobId.
+  const jk = jkOf(url);
+  const canonicalUrl = jk ? `https://au.indeed.com/viewjob?jk=${jk}` : canonicalIndeedUrl(url);
+  const jobId = jk ? `${INDEED_JOB_ID_PREFIX}${jk}` : extractIndeedJobIdFromUrl(canonicalUrl);
   // Navigate to the SERP detail-panel URL (&vjk=), NOT /viewjob — the latter is
   // the Cloudflare-walled endpoint. The panel carries the same full JD in-page.
   const navUrl = searchPanelUrl(url);
