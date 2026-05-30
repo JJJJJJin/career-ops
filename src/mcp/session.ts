@@ -62,6 +62,20 @@ export class SessionManager {
     return this.context !== null;
   }
 
+  /** Reset all live state when the context dies out-of-band. Safe to call twice. */
+  private handleContextClosed(): void {
+    if (!this.context) return; // already cleaned up via close()
+    log.info('browser context closed out-of-band — clearing session state');
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+    this.tabs.clear();
+    this.activeId = null;
+    this.browser = null;
+    this.context = null;
+  }
+
   private armIdle(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
@@ -93,6 +107,11 @@ export class SessionManager {
       this.activeId = id;
       // If anything ever closes a page out from under us, drop it from the map.
       this.context.on('page', (p) => this.adopt(p));
+      // If the whole context dies out-of-band (user closes the window, the
+      // browser crashes, a Cloudflare page kills it), drop ALL state so isOpen
+      // reflects reality and the next call relaunches instead of erroring with
+      // "Target page/context/browser has been closed".
+      this.context.on('close', () => this.handleContextClosed());
     })();
     try {
       await this.launching;
@@ -153,9 +172,28 @@ export class SessionManager {
     return t;
   }
 
+  /** Drop tabs whose page was closed out-of-band; fix the active pointer. */
+  private pruneClosed(): void {
+    for (const [id, t] of this.tabs) {
+      if (t.page.isClosed()) this.tabs.delete(id);
+    }
+    if (this.activeId && !this.tabs.has(this.activeId)) {
+      this.activeId = this.tabs.keys().next().value ?? null;
+    }
+  }
+
   /** The active (or given) tab's live page. Lazily launches the browser. */
   async getPage(tabId?: string): Promise<Page> {
     await this.ensureContext();
+    this.pruneClosed();
+    // The requested/active tab may have been closed out-of-band — if nothing
+    // live remains, relaunch a fresh tab rather than handing back a dead page.
+    if (this.tabs.size === 0) {
+      const page = await this.context!.newPage();
+      const id = this.freshId();
+      this.tabs.set(id, { id, page, snapshot: null });
+      this.activeId = id;
+    }
     this.armIdle();
     return this.tab(tabId).page;
   }
@@ -223,6 +261,7 @@ export class SessionManager {
   }
 
   async listTabs(): Promise<TabInfo[]> {
+    this.pruneClosed();
     const out: TabInfo[] = [];
     for (const t of this.tabs.values()) {
       const info = this.tabInfo(t);
@@ -240,8 +279,9 @@ export class SessionManager {
 
   /** Perceive: snapshot the (active or given) tab, store it on that tab, return it. */
   async observe(tabId?: string): Promise<Snapshot> {
-    const tab = this.tab(tabId);
     await this.ensureContext();
+    this.pruneClosed();
+    const tab = this.tab(tabId);
     this.armIdle();
     const snap = await snapshotDom(tab.page);
     tab.snapshot = snap;
