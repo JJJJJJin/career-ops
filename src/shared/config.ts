@@ -72,9 +72,11 @@ export const config = {
       'junior software engineer',
       'ai engineer',
       'machine learning engineer',
+      'software engineer developer',
+      'full stack',
     ]),
     location: process.env.SEARCH_LOCATION ?? 'All Australia',
-    days: parseInt10(process.env.DATE_RANGE_DAYS, 7),
+    days: parseInt10(process.env.DATE_RANGE_DAYS, 1),
     maxJobsPerKeyword: parseInt10(process.env.MAX_JOBS_PER_KEYWORD, 40),
   },
 

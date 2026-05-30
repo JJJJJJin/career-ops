@@ -15,7 +15,7 @@ export async function runCli(argv: string[]): Promise<void> {
   }
 
   const r = await generateCoverLetter(jobId, { force });
-  process.stdout.write(`✔ cover_letter.json + cover_letter.md → ${path.relative(config.repoRoot, r.outputDir)}/\n`);
+  process.stdout.write(`✔ cover-letter.json + cover-letter.md → ${path.relative(config.repoRoot, r.outputDir)}/\n`);
   process.stdout.write(`  paragraphs: ${r.letter.bodyParagraphs.length}\n`);
   process.stdout.write(`\n  next: career-ops render-cover-letter-pdf ${jobId}\n`);
 }

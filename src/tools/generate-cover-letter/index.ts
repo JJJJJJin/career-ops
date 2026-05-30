@@ -109,8 +109,8 @@ export async function generateCoverLetter(jobId: string, opts: GenerateCoverLett
 
   const slug = artefactBase(job);
   const outputDir = applicationDir(job);
-  const jsonPath = path.join(outputDir, `${slug}-cover_letter.json`);
-  const mdPath = path.join(outputDir, `${slug}-cover_letter.md`);
+  const jsonPath = path.join(outputDir, `${slug}-cover-letter.json`);
+  const mdPath = path.join(outputDir, `${slug}-cover-letter.md`);
 
   if (!opts.force && fs.existsSync(jsonPath) && fs.existsSync(mdPath)) {
     const cached = JSON.parse(fs.readFileSync(jsonPath, 'utf-8')) as TailoredCoverLetter;

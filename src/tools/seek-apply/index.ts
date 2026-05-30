@@ -75,7 +75,7 @@ async function applyOneJob(session: BrowserSession, jobId: string, submitMode: S
   const dir = applicationDir(job);
   const resumePdf = path.join(dir, `${slug}-resume.pdf`);
   if (!fs.existsSync(resumePdf)) throw new Error(`resume PDF missing: ${resumePdf}. Run \`career-ops apply-job ${jobId}\` first.`);
-  const coverText = composeCoverLetter(path.join(dir, `${slug}-cover_letter.json`));
+  const coverText = composeCoverLetter(path.join(dir, `${slug}-cover-letter.json`));
 
   // External postings: record for manual submission, don't drive a wizard.
   if (job.applyType === 'external') {

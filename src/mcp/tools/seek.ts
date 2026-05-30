@@ -175,7 +175,7 @@ export function registerSeekTools(server: McpServer): void {
     {
       title: 'Fill the documents stage',
       description:
-        'Attach the resume and cover letter on the documents stage. DEFAULT (just pass jobId): UPLOAD both as PDFs resolved from output/seek/<dir>/<base>-resume.pdf and -cover_letter.pdf — the HR-facing filenames apply_job generated. Fallbacks: resume "select" (pick a SEEK-saved resume by filename); cover letter "write" (paste text) or "omit". Does NOT advance — call seek_apply_advance next.',
+        'Attach the resume and cover letter on the documents stage. DEFAULT (just pass jobId): UPLOAD both as PDFs resolved from output/seek/<dir>/<base>-resume.pdf and -cover-letter.pdf — the HR-facing filenames apply_job generated. Fallbacks: resume "select" (pick a SEEK-saved resume by filename); cover letter "write" (paste text) or "omit". Does NOT advance — call seek_apply_advance next.',
       inputSchema: {
         jobId: z.string().optional().describe('Resolve the tailored resume + cover-letter PDFs for this job (upload mode). Run apply_job first to generate them.'),
         resume: z.enum(['upload', 'select']).optional().describe('Default "upload" (needs jobId or resumePath).'),
@@ -197,7 +197,7 @@ export function registerSeekTools(server: McpServer): void {
           const base = artefactBase(job);
           const dir = applicationDir(job);
           resolvedResume = path.join(dir, `${base}-resume.pdf`);
-          resolvedCover = path.join(dir, `${base}-cover_letter.pdf`);
+          resolvedCover = path.join(dir, `${base}-cover-letter.pdf`);
         }
 
         const input: DocumentsInput = {};

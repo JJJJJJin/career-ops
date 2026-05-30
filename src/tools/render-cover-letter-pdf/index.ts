@@ -40,7 +40,7 @@ export async function renderCoverLetterPdf(jobId: string, opts: RenderCoverLette
 
   const slug = artefactBase(job);
   const outputDir = applicationDir(job);
-  const jsonPath = path.join(outputDir, `${slug}-cover_letter.json`);
+  const jsonPath = path.join(outputDir, `${slug}-cover-letter.json`);
   if (!fs.existsSync(jsonPath)) {
     throw new Error(
       `render-cover-letter-pdf: ${jsonPath} not found. Run \`career-ops generate-cover-letter ${jobId}\` first.`,
@@ -60,7 +60,7 @@ export async function renderCoverLetterPdf(jobId: string, opts: RenderCoverLette
     CLOSING: escapeHtml(letter.closing),
   });
 
-  const outPath = opts.outPath ?? path.join(outputDir, `${slug}-cover_letter.pdf`);
+  const outPath = opts.outPath ?? path.join(outputDir, `${slug}-cover-letter.pdf`);
   await renderHtmlToPdf(html, { outPath });
 
   log.info({ jobId, outPath }, 'render-cover-letter-pdf: complete');
