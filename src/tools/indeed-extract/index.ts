@@ -25,6 +25,8 @@ export type ExtractOptions = {
   noLlm?: boolean;
   noStore?: boolean;
   reextract?: boolean;
+  /** Reuse an already-open live page instead of a throwaway browser (anti-bot). */
+  page?: Page;
 };
 
 export const INDEED_JOB_ID_PREFIX = 'indeed:';
@@ -305,7 +307,9 @@ export async function indeedExtract(url: string, opts: ExtractOptions = {}): Pro
     }
   }
 
-  const job = await withBrowser((session) => extractOnPage(session.page, url, opts));
+  const job = opts.page
+    ? await extractOnPage(opts.page, url, opts)
+    : await withBrowser((session) => extractOnPage(session.page, url, opts));
 
   if (!opts.noStore) {
     db.upsertJob(job);

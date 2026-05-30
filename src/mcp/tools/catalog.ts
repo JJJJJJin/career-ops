@@ -3,7 +3,9 @@
 // extract, evaluate, tailor, render, track. No browser session involved.
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { guard, ok } from '../result.js';
+import { guard, needsHumanInput, ok, withScreenshot } from '../result.js';
+import { sessions } from '../session.js';
+import { detectChallenge, textLooksLikeChallenge } from '../../shared/browser/antibot.js';
 import { seekSearch } from '../../tools/seek-search/index.js';
 import { linkedinSearch } from '../../tools/linkedin-search/index.js';
 import { indeedSearch } from '../../tools/indeed-search/index.js';
@@ -55,14 +57,40 @@ export function registerCatalogTools(server: McpServer): void {
     'job_extract',
     {
       title: 'Extract a job posting',
-      description: 'Fetch + parse a job posting URL into a full Job record (auto-detects the source from the URL) and store it.',
+      description:
+        'Fetch + parse a job posting URL into a full Job record (auto-detects the source from the URL) and store it. ' +
+        'When a live browser session is open it extracts THROUGH that session — a warmed-up, cookie-bearing session ' +
+        'gets past anti-bot walls (e.g. Indeed/Cloudflare) that block a cold launch. If a verification wall is hit, ' +
+        'returns needs_human_input + a screenshot: solve it in the open window, then call again.',
       inputSchema: { url: z.string().url(), reextract: z.boolean().optional() },
     },
     async ({ url, reextract }) =>
       guard(async () => {
         const source = detectSource(url);
         if (!source) throw new Error(`no job source matches URL "${url}" (seek/linkedin/indeed/builtin).`);
-        const job = await source.extract(url, { reextract });
+
+        // Reuse the live session when open (anti-bot resilience); otherwise the
+        // source falls back to its own throwaway browser as before.
+        const page = sessions.isOpen ? await sessions.getPage() : undefined;
+        const job = await source.extract(url, { reextract, page });
+
+        // If we drove the live page and it's sitting on a verification wall, the
+        // record we just "parsed" is really the challenge text. Hand off to the
+        // human — the browser stays open server-side for them to click through.
+        if (page) {
+          const challenge = await detectChallenge(page);
+          if (challenge.challenged || textLooksLikeChallenge(job.title)) {
+            const signal = challenge.signal ?? job.title;
+            const msg =
+              `Anti-bot verification on ${source.name} ("${signal}"). The live browser window is open — ` +
+              `solve the challenge there, then call job_extract again for this URL.`;
+            const data = { status: 'needs_human_input', kind: 'text', url, source: source.name, signal };
+            const shot = await sessions.screenshot().catch(() => null);
+            return shot
+              ? withScreenshot(shot.toString('base64'), `NEEDS HUMAN INPUT (text): ${msg}`, data)
+              : needsHumanInput(msg, 'text', { url, source: source.name, signal });
+          }
+        }
         return ok({ source: source.name, job }, `extracted ${job.jobId}: ${job.title}`);
       }),
   );
