@@ -80,7 +80,11 @@ export class SessionManager {
     if (this.launching) return this.launching;
     this.launching = (async () => {
       log.info({ headless: this.headless }, 'launching browser session');
-      const session = await launchSession({ headless: this.headless, storageStatePath: config.seek.authStatePath });
+      const session = await launchSession({
+        headless: this.headless,
+        storageStatePath: config.seek.authStatePath,
+        userDataDir: config.browser.userDataDir,
+      });
       this.browser = session.browser;
       this.context = session.context;
       // The context's first page becomes our first tab.
@@ -303,8 +307,9 @@ export class SessionManager {
     this.activeId = null;
     this.browser = null;
     this.context = null;
-    if (!context || !browser) return;
+    if (!context) return;
     // Persist cookies so a logged-in session survives the close/relaunch.
+    // (In persistent mode they're also kept in the user-data dir.)
     try {
       await context.storageState({ path: config.seek.authStatePath });
     } catch (err) {
@@ -316,7 +321,7 @@ export class SessionManager {
       log.warn({ err: (err as Error).message }, 'context close failed');
     }
     try {
-      await browser.close();
+      await browser?.close();
     } catch (err) {
       log.warn({ err: (err as Error).message }, 'browser close failed');
     }
