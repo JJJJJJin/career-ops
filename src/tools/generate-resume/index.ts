@@ -199,7 +199,16 @@ export async function generateResume(jobId: string, opts: GenerateResumeOptions 
   const tailored = await callJson<Partial<TailoredResume>>({
     step: 'generate-resume',
     systemPrompt: SYSTEM_PROMPT,
-    userPrompt: `${SCHEMA_HINT}
+    // Stable across every job in a batch → cached prefix (schema + full profile).
+    cachePrefix: `${SCHEMA_HINT}
+
+CANDIDATE PROFILE (structured):
+${JSON.stringify(profile, null, 2)}
+
+CANDIDATE PROFILE MARKDOWN (authoritative for project framing — pick the variant best matching the job):
+${profileMd}`,
+    // Per-job content → varies each call, comes after the cached prefix.
+    userPrompt: `Generate the tailored resume JSON for THIS job, using the schema and candidate profile above.
 
 JOB: ${job.title} @ ${job.company ?? 'Unknown'}
 
@@ -207,13 +216,7 @@ JOB SUMMARY:
 ${JSON.stringify(summary, null, 2)}
 
 MATCH ANALYSIS:
-${JSON.stringify(match, null, 2)}
-
-CANDIDATE PROFILE (structured):
-${JSON.stringify(profile, null, 2)}
-
-CANDIDATE PROFILE MARKDOWN (authoritative for project framing — pick the variant best matching the job):
-${profileMd}`,
+${JSON.stringify(match, null, 2)}`,
     maxTokens: 8192,
   });
 

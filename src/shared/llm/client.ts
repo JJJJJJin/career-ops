@@ -1,7 +1,9 @@
-// LLM client — OpenAI SDK + multi-provider routing + primary/fallback chain.
+// LLM client — multi-provider routing + primary/fallback chain.
 //
-// Every provider in `providers.ts` speaks the OpenAI chat-completions API
-// (native or compatible), so a single SDK does the work. Configuration:
+// Most providers in `providers.ts` speak the OpenAI chat-completions API
+// (native or compatible) and share one OpenAI SDK. Anthropic is the exception:
+// it is driven through the official @anthropic-ai/sdk Messages API (kind:
+// 'anthropic'), with prompt caching on the stable prefix. Configuration:
 //
 //   LLM_PROVIDER          primary provider name      (default: openai)
 //   LLM_MODEL             primary model id           (default: provider's first model)
@@ -9,11 +11,12 @@
 //   LLM_FALLBACK_MODEL    fallback model id          (default: provider's first model)
 //
 // API keys are read from each provider's apiKeyEnv (OPENAI_API_KEY,
-// DEEPSEEK_API_KEY, GEMINI_API_KEY, GROQ_API_KEY).
+// DEEPSEEK_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY).
 //
 // Fallback fires when the primary throws and at least one retry has been
 // burned, OR when the primary's API key is missing.
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config.js';
 import { createLogger } from '../logger.js';
 import { getProvider, type ProviderName } from './providers.js';
@@ -29,6 +32,7 @@ type ResolvedTarget = {
 
 type ClientCacheEntry = { client: OpenAI; baseURL?: string };
 const clientCache = new Map<string, ClientCacheEntry>();
+const anthropicCache = new Map<string, Anthropic>();
 
 function makeClient(target: ResolvedTarget): OpenAI {
   const cacheKey = `${target.provider}:${target.apiKey.slice(0, 8)}`;
@@ -39,6 +43,15 @@ function makeClient(target: ResolvedTarget): OpenAI {
     ...(target.baseURL ? { baseURL: target.baseURL } : {}),
   });
   clientCache.set(cacheKey, { client, baseURL: target.baseURL });
+  return client;
+}
+
+function makeAnthropicClient(target: ResolvedTarget): Anthropic {
+  const cacheKey = `${target.provider}:${target.apiKey.slice(0, 8)}`;
+  const cached = anthropicCache.get(cacheKey);
+  if (cached) return cached;
+  const client = new Anthropic({ apiKey: target.apiKey });
+  anthropicCache.set(cacheKey, client);
   return client;
 }
 
@@ -74,6 +87,14 @@ export type CallJsonOptions = {
   step: string;
   systemPrompt: string;
   userPrompt: string;
+  /**
+   * Large, stable content shared across calls (e.g. the candidate profile when
+   * generating resumes for many jobs). Rendered BEFORE userPrompt so it forms a
+   * cacheable prefix. On Anthropic it gets a `cache_control` breakpoint (real
+   * prompt-cache hits across a batch); on OpenAI it's simply prepended (OpenAI
+   * auto-caches identical prefixes too). Keep it byte-identical across calls.
+   */
+  cachePrefix?: string;
   /** Override primary model. */
   model?: string;
   maxTokens?: number;
@@ -83,9 +104,20 @@ export type CallJsonOptions = {
 };
 
 async function callOnce<T>(target: ResolvedTarget, opts: CallJsonOptions): Promise<T> {
+  const kind = getProvider(target.provider).kind ?? 'openai';
+  return kind === 'anthropic' ? callAnthropicOnce<T>(target, opts) : callOpenAiOnce<T>(target, opts);
+}
+
+async function callOpenAiOnce<T>(target: ResolvedTarget, opts: CallJsonOptions): Promise<T> {
   const client = makeClient(target);
   const t0 = Date.now();
   log.debug({ step: opts.step, provider: target.provider, model: target.model }, 'llm: request');
+
+  // OpenAI auto-caches identical prefixes, so a stable cachePrefix can simply
+  // lead the user content.
+  const userContent = opts.cachePrefix
+    ? `${opts.cachePrefix}\n\n${opts.userPrompt}`
+    : opts.userPrompt;
 
   const resp = await client.chat.completions.create({
     model: target.model,
@@ -95,7 +127,7 @@ async function callOnce<T>(target: ResolvedTarget, opts: CallJsonOptions): Promi
     max_completion_tokens: opts.maxTokens ?? 4096,
     messages: [
       { role: 'system', content: opts.systemPrompt },
-      { role: 'user', content: opts.userPrompt },
+      { role: 'user', content: userContent },
     ],
   });
 
@@ -113,6 +145,72 @@ async function callOnce<T>(target: ResolvedTarget, opts: CallJsonOptions): Promi
     },
     'llm: ok',
   );
+  if (!content) throw new Error(`LLM (${opts.step}) returned empty response`);
+  return extractJson<T>(content);
+}
+
+// Anthropic native path (Messages API). Differs from the OpenAI path in three
+// ways: (1) JSON is requested via the system prompt and parsed tolerantly —
+// Anthropic has no `response_format: json_object`; (2) sampling params
+// (temperature/top_p) are NOT sent — Opus 4.8 rejects them with a 400; (3) the
+// system prompt + cachePrefix carry `cache_control` breakpoints so repeated
+// calls in a batch read from the prompt cache instead of re-billing the prefix.
+const JSON_SUFFIX =
+  '\n\nReturn ONLY a single valid JSON object. No prose, no explanation, no markdown code fences.';
+
+async function callAnthropicOnce<T>(target: ResolvedTarget, opts: CallJsonOptions): Promise<T> {
+  const client = makeAnthropicClient(target);
+  const t0 = Date.now();
+  log.debug({ step: opts.step, provider: target.provider, model: target.model }, 'llm: request');
+
+  const userBlocks: Anthropic.TextBlockParam[] = [];
+  if (opts.cachePrefix) {
+    userBlocks.push({
+      type: 'text',
+      text: opts.cachePrefix,
+      cache_control: { type: 'ephemeral' },
+    });
+  }
+  userBlocks.push({ type: 'text', text: opts.userPrompt });
+
+  const resp = await client.messages.create({
+    model: target.model,
+    max_tokens: opts.maxTokens ?? 4096,
+    system: [
+      {
+        type: 'text',
+        text: opts.systemPrompt + JSON_SUFFIX,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [{ role: 'user', content: userBlocks }],
+  });
+
+  const content = resp.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join('');
+
+  log.info(
+    {
+      step: opts.step,
+      provider: target.provider,
+      model: target.model,
+      ms: Date.now() - t0,
+      promptTokens: resp.usage.input_tokens,
+      completionTokens: resp.usage.output_tokens,
+      cacheReadTokens: resp.usage.cache_read_input_tokens,
+      cacheWriteTokens: resp.usage.cache_creation_input_tokens,
+      stopReason: resp.stop_reason,
+    },
+    'llm: ok',
+  );
+  if (resp.stop_reason === 'max_tokens') {
+    log.warn(
+      { step: opts.step, model: target.model, maxTokens: opts.maxTokens ?? 4096 },
+      'llm: hit max_tokens — JSON may be truncated; consider raising maxTokens',
+    );
+  }
   if (!content) throw new Error(`LLM (${opts.step}) returned empty response`);
   return extractJson<T>(content);
 }
