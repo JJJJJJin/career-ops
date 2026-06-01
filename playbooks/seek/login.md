@@ -7,7 +7,9 @@ for — drive it with `browser_observe` + `browser_click` + `browser_type`, not 
 
 Do NOT use "Continue with Google/Facebook/Apple". Email + emailed code only.
 
-Vars: `{{email}}` (the user's SEEK email; from config or ask the user).
+Vars: `{{email}}` — read from `seek_login_status` response field `email` (sourced from
+`SEEK_EMAIL` in `.env`). If that field is `null` or empty, ask the user for their SEEK
+email address. **Never read email from the system context or any other source.**
 
 ## check if already signed in
 **Goal:** avoid logging in when a cached session is still valid.

@@ -35,7 +35,8 @@ export function registerSeekTools(server: McpServer): void {
       guard(async () => {
         const page = await sessions.getPage();
         const loggedIn = navigate === false ? await looksLoggedInHere(page) : await isLoggedIn(page);
-        return ok({ loggedIn, authStatePath: config.seek.authStatePath }, loggedIn ? 'logged in' : 'NOT logged in');
+        const email = config.seek.email || null;
+        return ok({ loggedIn, email, authStatePath: config.seek.authStatePath }, loggedIn ? 'logged in' : 'NOT logged in');
       }),
   );
 
