@@ -7,7 +7,7 @@ import { applicationDir, artefactBase } from '../../shared/slug.js';
 import { createLogger } from '../../shared/logger.js';
 import { escapeHtml, inlineMd, renderTemplate } from '../../shared/render/template.js';
 import { loadTemplate, renderHtmlToPdf } from '../../shared/render/pdf.js';
-import type { TailoredResume } from '../generate-resume/types.js';
+import type { TailoredResume } from '../assemble-resume/types.js';
 
 const log = createLogger('render-resume-pdf');
 
@@ -168,7 +168,7 @@ export async function renderResumePdf(jobId: string, opts: RenderResumePdfOption
   const outputDir = applicationDir(job);
   const jsonPath = path.join(outputDir, `${slug}-resume.json`);
   if (!fs.existsSync(jsonPath)) {
-    throw new Error(`render-resume-pdf: ${jsonPath} not found. Run \`career-ops generate-resume ${jobId}\` first.`);
+    throw new Error(`render-resume-pdf: ${jsonPath} not found. Run \`career-ops assemble-resume ${jobId}\` first.`);
   }
   const resume = JSON.parse(fs.readFileSync(jsonPath, 'utf-8')) as TailoredResume;
 

@@ -34,5 +34,5 @@ career-ops match-job <jobId> [--force] [--json]
 - `NOT_FOR_YOU` — set by `evaluate-job` when eligibility flags fire (this tool never sets it)
 
 ## Chaining
-- After STRONG, the user usually wants `apply-job` or `generate-resume` + `generate-cover-letter`.
+- After STRONG, the user usually wants `apply-job` or `assemble-resume` + `generate-cover-letter`.
 - `match.keywordsToEmphasize` flows through to the resume generator automatically.

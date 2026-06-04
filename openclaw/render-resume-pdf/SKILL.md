@@ -1,17 +1,17 @@
 ---
 name: render-resume-pdf
-description: Load output/<source>/<slug>/<slug>-resume.json, fill the resume.html template, write <slug>-resume.pdf via Playwright. Cheap (no LLM). Use after generate-resume, or after manually editing the resume JSON. Requires generate-resume to have run first.
+description: Load output/<source>/<slug>/<slug>-resume.json, fill the resume.html template, write <slug>-resume.pdf via Playwright. Cheap (no LLM). Use after assemble-resume, or after manually editing the resume JSON. Requires assemble-resume to have run first.
 ---
 
 # render-resume-pdf
 
 ## When to use
-- After `generate-resume` (the user wants the deliverable PDF)
+- After `assemble-resume` (the user wants the deliverable PDF)
 - After hand-editing `output/<source>/<slug>/<slug>-resume.json` (re-render without an LLM call)
 - Sub-step inside `apply-job`
 
 Skip when:
-- `output/<source>/<slug>/<slug>-resume.json` doesn't exist yet → run `generate-resume` first
+- `output/<source>/<slug>/<slug>-resume.json` doesn't exist yet → run `assemble-resume` first
 
 ## How to invoke
 ```
@@ -26,5 +26,5 @@ career-ops render-resume-pdf <jobId> [--out <path>]
 - File: `output/<source>/<slug>/<slug>-resume.pdf` (A4, 12mm margins, Space Grotesk + DM Sans).
 
 ## Chaining
-- Standalone after generate-resume.
+- Standalone after assemble-resume.
 - `apply-job` runs this in parallel with `render-cover-letter-pdf`.

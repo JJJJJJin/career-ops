@@ -10,7 +10,9 @@ import path from 'node:path';
 import { createLogger } from '../shared/logger.js';
 import { writeTracker } from '../shared/db/view.js';
 import { evaluateJob } from '../tools/evaluate-job/index.js';
-import { generateResume } from '../tools/generate-resume/index.js';
+import { assembleResume } from '../tools/assemble-resume/index.js';
+import { goNoGo, type GoNoGoDecision } from '../tools/go-no-go/index.js';
+import { recordJobGaps } from '../tools/gap-report/index.js';
 import { generateCoverLetter } from '../tools/generate-cover-letter/index.js';
 import { generateCompanyBrief } from '../tools/generate-company-brief/index.js';
 import { renderResumePdf } from '../tools/render-resume-pdf/index.js';
@@ -33,6 +35,8 @@ export type ApplyOptions = {
   email?: boolean;
   /** Override the recipient (otherwise uses EMAIL_TO). */
   emailTo?: string;
+  /** Assemble + render even when the go/no-go gate marks the JD low-yield. */
+  applyAnyway?: boolean;
 };
 
 export type ApplyResult = {
@@ -50,6 +54,13 @@ export type ApplyResult = {
   };
   trackerPath: string;
   skippedDueToEligibility: boolean;
+  /** Go/no-go gate flagged the JD low-yield and generation was skipped. */
+  skippedDueToLowYield?: boolean;
+  goNoGo?: GoNoGoDecision;
+  /** Cover letter failed grounding twice → routed to review, no clean letter/PDF. */
+  coverLetterNeedsReview?: boolean;
+  /** Company brief had unsourced facts after retry → banner added. */
+  companyBriefNeedsReview?: boolean;
   emailedTo?: string;
   emailedFiles?: string[];
 };
@@ -75,31 +86,62 @@ export async function applyJob(jobIdOrUrl: string, opts: ApplyOptions = {}): Pro
     };
   }
 
-  log.info({ jobId, score: evaluation.match.scoreOutOf5, recommendation: evaluation.match.recommendation }, 'apply-job: stage 2 — generate (parallel)');
-
-  const tasks: Array<Promise<unknown>> = [
-    generateResume(jobId, { force: opts.force }),
-    generateCoverLetter(jobId, { force: opts.force }),
-  ];
-  if (!opts.skipBrief) {
-    tasks.push(generateCompanyBrief(jobId, { force: opts.force, companyWebsite: opts.companyWebsite }));
+  // Stage 1.5 — go/no-go gate. Compare the JD's hard must-haves against the
+  // real profile. A low-yield JD is surfaced (with reasons + recorded gaps) and
+  // generation is skipped by default, so we don't spend a cycle pretending to
+  // match. Override with --apply-anyway.
+  const summary = evaluation.summary ?? undefined;
+  const decision = await goNoGo(jobId, { summary });
+  if (decision.decision === 'low-yield' && !opts.applyAnyway) {
+    if (summary) recordJobGaps(jobId, summary, { unmetRequirements: [] }, decision.reasons);
+    log.warn({ jobId, reasons: decision.reasons.map((r) => r.kind) }, 'apply-job: low-yield — skipping generation (use --apply-anyway to override)');
+    const trackerPath = writeTracker();
+    return {
+      jobId,
+      recommendation: evaluation.match.recommendation,
+      scoreOutOf5: evaluation.match.scoreOutOf5,
+      outputDir: null,
+      artefacts: {},
+      trackerPath,
+      skippedDueToEligibility: false,
+      skippedDueToLowYield: true,
+      goNoGo: decision,
+    };
   }
 
-  const [resumeRes, coverRes, briefRes] = await Promise.all(tasks) as [
-    Awaited<ReturnType<typeof generateResume>>,
-    Awaited<ReturnType<typeof generateCoverLetter>>,
-    Awaited<ReturnType<typeof generateCompanyBrief>> | undefined,
-  ];
+  // Assemble the résumé FIRST — it is the grounding source for the cover letter
+  // (selected bullets + chosen summary), so it must exist before the letter is
+  // drafted and validated.
+  log.info({ jobId, score: evaluation.match.scoreOutOf5, recommendation: evaluation.match.recommendation }, 'apply-job: stage 2a — assemble résumé (deterministic)');
+  const resumeRes = await assembleResume(jobId, { force: opts.force, summary });
+  if (summary) recordJobGaps(jobId, summary, resumeRes.report, decision.reasons);
+
+  log.info({ jobId }, 'apply-job: stage 2b — cover letter + company brief (grounded, parallel)');
+  const [coverRes, briefRes] = await Promise.all([
+    generateCoverLetter(jobId, { force: opts.force }),
+    opts.skipBrief
+      ? Promise.resolve(undefined)
+      : generateCompanyBrief(jobId, { force: opts.force, companyWebsite: opts.companyWebsite }),
+  ]) as [Awaited<ReturnType<typeof generateCoverLetter>>, Awaited<ReturnType<typeof generateCompanyBrief>> | undefined];
+
+  if (coverRes.needsReview) {
+    log.warn({ jobId, violations: coverRes.violations?.length }, 'apply-job: cover letter routed to NEEDS_REVIEW — no clean letter/PDF emitted');
+  }
 
   let resumePdf: string | undefined;
   let coverLetterPdf: string | undefined;
   let companyBriefPdf: string | undefined;
   if (!opts.skipPdf) {
-    log.info({ jobId, includeBrief: !!briefRes }, 'apply-job: stage 3 — render PDFs (parallel)');
-    const pdfTasks: Array<Promise<string>> = [renderResumePdf(jobId), renderCoverLetterPdf(jobId)];
-    if (briefRes) pdfTasks.push(renderCompanyBriefPdf(jobId));
-    const pdfs = await Promise.all(pdfTasks);
-    [resumePdf, coverLetterPdf, companyBriefPdf] = pdfs as [string, string, string | undefined];
+    // Never render a PDF for a cover letter that failed grounding.
+    const renderCover = !coverRes.needsReview;
+    log.info({ jobId, includeBrief: !!briefRes, renderCover }, 'apply-job: stage 3 — render PDFs');
+    resumePdf = await renderResumePdf(jobId);
+    const [coverPdf, briefPdf] = await Promise.all([
+      renderCover ? renderCoverLetterPdf(jobId) : Promise.resolve(undefined),
+      briefRes ? renderCompanyBriefPdf(jobId) : Promise.resolve(undefined),
+    ]);
+    coverLetterPdf = coverPdf;
+    companyBriefPdf = briefPdf;
   }
 
   const trackerPath = writeTracker();
@@ -156,13 +198,15 @@ export async function applyJob(jobIdOrUrl: string, opts: ApplyOptions = {}): Pro
     artefacts: {
       resumeMd: resumeRes.resumeMdPath,
       resumePdf,
-      coverLetterMd: coverRes.mdPath,
+      coverLetterMd: coverRes.needsReview ? coverRes.reviewPath : coverRes.mdPath,
       coverLetterPdf,
       companyBriefMd: briefRes?.mdPath,
       companyBriefPdf,
     },
     trackerPath,
     skippedDueToEligibility: false,
+    coverLetterNeedsReview: coverRes.needsReview,
+    companyBriefNeedsReview: briefRes?.needsReview,
     emailedTo,
     emailedFiles,
   };
@@ -177,12 +221,14 @@ export async function runCli(argv: string[]): Promise<void> {
   let companyWebsite: string | undefined;
   let email: boolean | undefined;
   let emailTo: string | undefined;
+  let applyAnyway = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--force') force = true;
     else if (a === '--reextract') reextract = true;
     else if (a === '--skip-brief') skipBrief = true;
     else if (a === '--skip-pdf') skipPdf = true;
+    else if (a === '--apply-anyway') applyAnyway = true;
     else if (a === '--email') email = true;
     else if (a === '--no-email') email = false;
     else if (a === '--email-to') {
@@ -194,18 +240,30 @@ export async function runCli(argv: string[]): Promise<void> {
     } else if (a && !a.startsWith('--')) jobIdOrUrl = a;
   }
   if (!jobIdOrUrl) {
-    console.error('Usage: career-ops apply-job <jobIdOrUrl> [--force] [--reextract] [--skip-brief] [--skip-pdf] [--company-website <url>] [--email | --no-email] [--email-to <addr>]');
+    console.error('Usage: career-ops apply-job <jobIdOrUrl> [--force] [--reextract] [--skip-brief] [--skip-pdf] [--apply-anyway] [--company-website <url>] [--email | --no-email] [--email-to <addr>]');
     process.exit(2);
   }
 
-  const r = await applyJob(jobIdOrUrl, { force, reextract, skipBrief, skipPdf, companyWebsite, email, emailTo });
+  const r = await applyJob(jobIdOrUrl, { force, reextract, skipBrief, skipPdf, companyWebsite, email, emailTo, applyAnyway });
 
   if (r.skippedDueToEligibility) {
     process.stdout.write(`🚫 ${r.jobId} skipped — eligibility blocked. See \`career-ops show-job ${r.jobId}\` for details.\n`);
     return;
   }
+  if (r.skippedDueToLowYield) {
+    process.stdout.write(`⚠ ${r.jobId} low-yield — generation skipped (run with --apply-anyway to override):\n`);
+    for (const reason of r.goNoGo?.reasons ?? []) process.stdout.write(`    - [${reason.kind}] ${reason.detail}\n`);
+    process.stdout.write(`\n  Recorded to gap report. See \`career-ops gap-report\`.\n`);
+    return;
+  }
   process.stdout.write(`\n✔ ${r.jobId}  ${r.recommendation}  ${r.scoreOutOf5}/5\n`);
   process.stdout.write(`  → ${r.outputDir}\n`);
+  if (r.coverLetterNeedsReview) {
+    process.stdout.write(`  ⚠ cover letter had unsupported claims after retry → NEEDS_REVIEW file, no PDF. Review: ${r.artefacts.coverLetterMd}\n`);
+  }
+  if (r.companyBriefNeedsReview) {
+    process.stdout.write(`  ⚠ company brief has unsourced facts (banner added) — verify before relying.\n`);
+  }
   if (r.artefacts.resumePdf) process.stdout.write(`     ${path.basename(r.artefacts.resumePdf)}\n`);
   if (r.artefacts.coverLetterPdf) process.stdout.write(`     ${path.basename(r.artefacts.coverLetterPdf)}\n`);
   if (r.artefacts.companyBriefPdf) process.stdout.write(`     ${path.basename(r.artefacts.companyBriefPdf)}\n`);

@@ -12,7 +12,7 @@ description: ⭐ Single-job full pipeline — evaluate + generate (resume + cove
 
 Skip when:
 - The user only wants the verdict → `evaluate-job`
-- The user only wants ONE artefact → `generate-resume` / `generate-cover-letter` / `generate-company-brief`
+- The user only wants ONE artefact → `assemble-resume` / `generate-cover-letter` / `generate-company-brief`
 - Eligibility is already known to fail → don't waste time
 
 ## How to invoke

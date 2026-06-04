@@ -6,7 +6,7 @@ import { config } from '../../shared/config.js';
 import { db } from '../../shared/db/store.js';
 import { createLogger } from '../../shared/logger.js';
 import type { JobSummary, MatchAnalysis } from '../../shared/db/types.js';
-import { ensureProfile } from '../distill-profile/index.js';
+import { ensureProfileFromLibrary } from '../../shared/library/profile-adapter.js';
 import { summarizeJob } from '../summarize-job/index.js';
 
 const log = createLogger('match-job');
@@ -57,7 +57,7 @@ export async function matchJob(jobId: string, opts: MatchOptions = {}): Promise<
   }
 
   const summary = opts.summary ?? (await summarizeJob(jobId));
-  const { profile } = await ensureProfile();
+  const { profile } = ensureProfileFromLibrary();
 
   log.info({ jobId, model: config.llm.model }, 'match-job: calling LLM');
   const out = await callJson<Partial<MatchAnalysis>>({

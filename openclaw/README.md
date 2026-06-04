@@ -33,19 +33,25 @@ To install into a different skills directory:
 - **[builtin-extract](builtin-extract/SKILL.md)** — fetch one Built In URL → full Job row (`builtin:<id>`)
 - **[web-distill](web-distill/SKILL.md)** — any URL → clean markdown (Mozilla Readability)
 
-### Profile
-- **[distill-profile](distill-profile/SKILL.md)** — `profile/profile.md` → `profile.json` (hash-cached)
+### Content library
+- **[parse-library](parse-library/SKILL.md)** — parse + validate `profile/profile_v3.md`, the single source of truth for résumé content
 
 ### Evaluation
 - **[flag-eligibility](flag-eligibility/SKILL.md)** — AU citizenship/PR/clearance/sponsorship regex scan
-- **[summarize-job](summarize-job/SKILL.md)** — JD → must-haves / nice-to-haves / tech / seniority
+- **[summarize-job](summarize-job/SKILL.md)** — JD → must-haves / nice-to-haves / tech / seniority / hard must-haves
+- **[classify-jd](classify-jd/SKILL.md)** — JD → archetype (backend / full-stack / ai-agent) + emphasis tags
+- **[go-no-go](go-no-go/SKILL.md)** — hard must-haves vs profile → go / low-yield with reasons
 - **[match-job](match-job/SKILL.md)** — profile + summary → fit score + recommendation
 - **[evaluate-job](evaluate-job/SKILL.md)** ⭐ — composite "should I apply?" entry point
 
 ### Generation
-- **[generate-resume](generate-resume/SKILL.md)** — TailoredResume JSON + markdown view
-- **[generate-cover-letter](generate-cover-letter/SKILL.md)** — 3-paragraph TailoredCoverLetter
+- **[assemble-resume](assemble-resume/SKILL.md)** ⭐ — deterministic résumé assembled by selecting vetted bullets from `profile_v3.md` (no LLM, traceability-checked)
+- **[generate-cover-letter](generate-cover-letter/SKILL.md)** — 3-paragraph TailoredCoverLetter (grounded in the library)
 - **[generate-company-brief](generate-company-brief/SKILL.md)** — company + role context, optional web grounding
+- **[outreach-draft](outreach-draft/SKILL.md)** — drafts for manually-supplied contacts → review queue (never auto-sent)
+
+### Tracking
+- **[gap-report](gap-report/SKILL.md)** — JD requirements not in the library, ranked by demand (learning roadmap)
 
 ### Rendering
 - **[render-resume-pdf](render-resume-pdf/SKILL.md)** — `<slug>-resume.json` → `<slug>-resume.pdf`

@@ -10,14 +10,22 @@ import { db } from '../../shared/db/store.js';
 import { applicationDir, artefactBase } from '../../shared/slug.js';
 import { createLogger } from '../../shared/logger.js';
 import type { JobSummary, Job } from '../../shared/db/types.js';
+import { unsourcedNumbers, hasCandidateVoice } from '../../shared/grounding/claims.js';
 import { summarizeJob } from '../summarize-job/index.js';
 import { webDistill } from '../web-distill/index.js';
 
 const log = createLogger('generate-company-brief');
 
-const SYSTEM_PROMPT = `You write concise company + role briefings to help a candidate quickly catch up before applying or interviewing. Use what's in the job description first; supplement with general knowledge ONLY when you're confident. Be honest about uncertainty — never fabricate funding, headcount, founders, or recent news. Anything unverified goes into "thingsToVerify".
+const MAX_ATTEMPTS = 2;
 
-If the user provided extra COMPANY WEBSITE CONTENT, treat it as authoritative for "what they do" and "products". Quote/paraphrase faithfully; don't extrapolate beyond what's there.
+const SYSTEM_PROMPT = `You write concise company + role briefings to help a candidate quickly catch up before applying or interviewing. This is the candidate's private prep document — write in the THIRD PERSON about the company; do NOT write in the candidate's voice or make claims about the candidate.
+
+SOURCING IS MANDATORY:
+- Every specific, quantitative company fact (funding, headcount, revenue, founding year, customer counts, growth %, valuations) MUST come from a provided source: the COMPANY WEBSITE CONTENT (if given) or the JOB DESCRIPTION.
+- If you cannot source a specific number from those, DO NOT assert it — put it in "thingsToVerify" instead.
+- Never fabricate funding, headcount, founders, or recent news. When in doubt, it goes to "thingsToVerify".
+
+If COMPANY WEBSITE CONTENT is provided, treat it as authoritative for "what they do" and "products"; paraphrase faithfully, don't extrapolate.
 
 Output strict JSON.`;
 
@@ -96,6 +104,8 @@ export type GenerateCompanyBriefResult = {
   brief: CompanyBrief;
   markdown: string;
   groundedBy: string | null;
+  /** Company facts remained unsourced after retry — banner added; verify before trusting. */
+  needsReview?: boolean;
 };
 
 export type GenerateCompanyBriefOptions = {
@@ -135,11 +145,21 @@ export async function generateCompanyBrief(jobId: string, opts: GenerateCompanyB
     }
   }
 
-  log.info({ jobId, model: config.llm.model, grounded: !!groundedBy }, 'generate-company-brief: calling LLM');
-  const out = await callJson<Partial<CompanyBrief>>({
-    step: 'generate-company-brief',
-    systemPrompt: SYSTEM_PROMPT,
-    userPrompt: `${SCHEMA_HINT}
+  // Source corpus for fact-checking company numbers: the distilled page when
+  // grounded, else the JD (itself a primary source about the company).
+  const sourceText = groundingBlock ? `${groundingBlock}\n${job.description}` : job.description;
+
+  let brief: CompanyBrief | null = null;
+  let violations: string[] = [];
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const avoidBlock = violations.length
+      ? `\n\nYOUR PREVIOUS DRAFT ASSERTED UNSOURCED NUMBERS: ${violations.join(', ')}. Remove them from the body and move any you can't source into "thingsToVerify".`
+      : '';
+    log.info({ jobId, attempt, grounded: !!groundedBy }, 'generate-company-brief: calling LLM');
+    const out = await callJson<Partial<CompanyBrief>>({
+      step: 'generate-company-brief',
+      systemPrompt: SYSTEM_PROMPT,
+      userPrompt: `${SCHEMA_HINT}
 
 JOB:
 - Title: ${job.title}
@@ -151,23 +171,35 @@ JOB DESCRIPTION (raw):
 ${job.description}
 
 JOB SUMMARY:
-${JSON.stringify(summary, null, 2)}${groundingBlock}`,
-  });
+${JSON.stringify(summary, null, 2)}${groundingBlock}${avoidBlock}`,
+    });
 
-  const brief: CompanyBrief = {
-    companyOneLiner: out.companyOneLiner ?? '',
-    whatTheyDo: out.whatTheyDo ?? '',
-    productsOrServices: out.productsOrServices ?? [],
-    industryAndMarket: out.industryAndMarket ?? '',
-    cultureAndValues: out.cultureAndValues ?? '',
-    positionContext: out.positionContext ?? '',
-    thingsToVerify: out.thingsToVerify ?? [],
-  };
+    brief = {
+      companyOneLiner: out.companyOneLiner ?? '',
+      whatTheyDo: out.whatTheyDo ?? '',
+      productsOrServices: out.productsOrServices ?? [],
+      industryAndMarket: out.industryAndMarket ?? '',
+      cultureAndValues: out.cultureAndValues ?? '',
+      positionContext: out.positionContext ?? '',
+      thingsToVerify: out.thingsToVerify ?? [],
+    };
 
-  const markdown = renderMarkdown(brief, job);
+    // Source check: company numbers in the BODY (not thingsToVerify) must be sourced.
+    const body = [brief.companyOneLiner, brief.whatTheyDo, brief.industryAndMarket, brief.cultureAndValues, brief.positionContext, ...brief.productsOrServices].join('\n');
+    violations = unsourcedNumbers(body, sourceText);
+    if (hasCandidateVoice(body)) violations.push('(candidate voice in a company brief)');
+    if (!violations.length) break;
+    log.warn({ jobId, attempt, unsourced: violations }, 'generate-company-brief: unsourced facts');
+  }
+
+  const safeBrief = brief as CompanyBrief;
+  const needsReview = violations.length > 0;
+  const markdown = (needsReview
+    ? `> ⚠ NEEDS REVIEW — unsourced/again-flagged: ${violations.join(', ')}. Verify before relying on these.\n\n`
+    : '') + renderMarkdown(safeBrief, job);
 
   fs.mkdirSync(outputDir, { recursive: true });
-  fs.writeFileSync(jsonPath, JSON.stringify(brief, null, 2), 'utf-8');
+  fs.writeFileSync(jsonPath, JSON.stringify(safeBrief, null, 2), 'utf-8');
   fs.writeFileSync(mdPath, markdown, 'utf-8');
 
   db.updateApplicationFields(jobId, {
@@ -178,9 +210,9 @@ ${JSON.stringify(summary, null, 2)}${groundingBlock}`,
   });
 
   log.info(
-    { jobId, outputDir, products: brief.productsOrServices.length, verifyItems: brief.thingsToVerify.length },
+    { jobId, outputDir, products: safeBrief.productsOrServices.length, verifyItems: safeBrief.thingsToVerify.length, needsReview },
     'generate-company-brief: complete',
   );
 
-  return { jobId, outputDir, mdPath, brief, markdown, groundedBy };
+  return { jobId, outputDir, mdPath, brief: safeBrief, markdown, groundedBy, needsReview };
 }

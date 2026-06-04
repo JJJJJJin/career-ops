@@ -8,7 +8,17 @@ import type { JobSummary } from '../../shared/db/types.js';
 
 const log = createLogger('summarize-job');
 
-const SYSTEM_PROMPT = `You summarize job postings so a candidate can quickly assess fit. Be precise. Distinguish must-haves (explicit requirements) from nice-to-haves (preferred / bonus). Do not invent details that are not in the posting. Output strict JSON.`;
+const SYSTEM_PROMPT = `You parse job postings so a candidate can quickly assess fit and a downstream tool can target a resume. Be precise. Distinguish must-haves (explicit requirements) from nice-to-haves (preferred / bonus). Do not invent details that are not in the posting. Output strict JSON.
+
+For "hardMustHaves", extract only BLOCKING requirements and classify each:
+- "years_experience": a minimum years-of-experience bar (set "years" to the number).
+- "citizenship_or_pr": Australian citizenship or permanent residency required.
+- "security_clearance": government security clearance required.
+- "pervasive_stack": a SINGLE technology/framework the whole role is built on (set "tech"). Only if it clearly runs through the entire posting, not a nice-to-have.
+- "other": any other genuine hard gate.
+If there are no blocking requirements, return an empty array.
+
+For "primaryEmphasis", state in a few words what the role is really about.`;
 
 const SCHEMA = `Return JSON: {
   "oneLineSummary": string,
@@ -17,7 +27,10 @@ const SCHEMA = `Return JSON: {
   "niceToHaveRequirements": string[],
   "techStack": string[],
   "domain": string,
-  "seniority": string
+  "seniority": string,
+  "keywords": string[],
+  "primaryEmphasis": string,
+  "hardMustHaves": [ { "kind": "years_experience"|"citizenship_or_pr"|"security_clearance"|"pervasive_stack"|"other", "detail": string, "years": number, "tech": string } ]
 }`;
 
 export type SummarizeOptions = {
@@ -63,6 +76,9 @@ ${job.description}`,
     techStack: out.techStack ?? [],
     domain: out.domain ?? '',
     seniority: out.seniority ?? '',
+    keywords: out.keywords ?? [],
+    primaryEmphasis: out.primaryEmphasis ?? '',
+    hardMustHaves: out.hardMustHaves ?? [],
   };
 
   if (!opts.noStore) {

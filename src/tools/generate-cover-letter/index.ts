@@ -1,6 +1,11 @@
-// generate-cover-letter — produce a TailoredCoverLetter for one job, then
-// render a markdown view from the structured form. Same JSON+md+PDF pattern
-// as generate-resume.
+// generate-cover-letter — produce a TailoredCoverLetter for one job, grounded
+// ONLY in this job's assembled résumé (selected bullets + chosen summary variant
+// + company/title). The prose is then put through the SAME enforced grounding as
+// the résumé's traceability check (shared/grounding/claims): hard deterministic
+// checks on numbers/tech/seniority/dates + an adversarial verifier for soft
+// "I did X" claims. On a violation we regenerate once; if it still fails, the
+// draft goes to a review queue and NO clean letter / PDF is produced. We never
+// silently emit a cover letter with an unsupported claim.
 import fs from 'node:fs';
 import path from 'node:path';
 import { callJson } from '../../shared/llm/client.js';
@@ -8,41 +13,33 @@ import { config } from '../../shared/config.js';
 import { db } from '../../shared/db/store.js';
 import { applicationDir, artefactBase } from '../../shared/slug.js';
 import { createLogger } from '../../shared/logger.js';
-import type { JobSummary, MatchAnalysis, Job } from '../../shared/db/types.js';
-import { ensureProfile } from '../distill-profile/index.js';
+import type { Job, JobSummary } from '../../shared/db/types.js';
+import { ensureLibrary } from '../../shared/library/parse.js';
+import { buildGrounding, validateProse, formatViolations, type ClaimViolation } from '../../shared/grounding/claims.js';
 import { summarizeJob } from '../summarize-job/index.js';
-import { matchJob } from '../match-job/index.js';
+import { assembleResume } from '../assemble-resume/index.js';
+import type { TailoredResume } from '../assemble-resume/types.js';
 import type { TailoredCoverLetter } from './types.js';
 
 const log = createLogger('generate-cover-letter');
 
-const SYSTEM_PROMPT = `You write SHORT cover letters (under 250 words across 3 body paragraphs). Tone: warm, confident, specific. Rules:
+const MAX_ATTEMPTS = 2;
 
-PARAGRAPH 1 — why this role
-- Reference one concrete thing from the job description (a product, a problem, a team scope).
-- State the candidate's relevant headline framing.
+const SYSTEM_PROMPT = `You write SHORT cover letters (under 250 words, 3 body paragraphs). Tone: warm, confident, specific. You are given a FIXED set of approved facts about the candidate (their selected résumé bullets + summary). You may ONLY state things supported by those facts.
 
-PARAGRAPH 2 — strongest 1-2 fits
-- Pull from match.strengths. Cite a specific project, role, or skill from the candidate profile (not "experienced" hand-waving).
-- If candidate profile markdown contains multiple framings of the same project, pick the framing closest to this job's domain — do not blend variants.
+PARAGRAPH 1 — why this role: reference one concrete thing from the job (a product, problem, or team scope) and the candidate's relevant framing.
+PARAGRAPH 2 — strongest 1-2 fits: cite a specific project/role/skill drawn from the approved facts (no "experienced" hand-waving).
+PARAGRAPH 3 — close: one sentence on what excites them about the team, one asking for a conversation. No begging.
 
-PARAGRAPH 3 — close
-- One sentence on what excites them about this team/company.
-- One sentence asking for the conversation. No begging.
-
-NEVER
-- Invent facts not in the candidate profile.
-- Use clichés ("passionate self-starter", "team player", "results-driven").
-- Quote requirements verbatim from the JD.
+HARD RULES (violations are rejected by an automated checker):
+- Do NOT state any number, metric, technology, job title, seniority level, or date that is not in the approved facts.
+- Do NOT inflate the internship to a senior/lead role. Use only the titles given.
+- Do NOT invent achievements, scope, employers, or skills. Paraphrase the approved facts; never add to them.
+- No clichés ("passionate self-starter", "results-driven"). Do not quote JD requirements verbatim.
 
 Output strict JSON in the schema below.`;
 
 const SCHEMA_HINT = `{
-  "name": string,
-  "contact": {
-    "email": string|null, "phone": string|null, "location": string|null,
-    "linkedinDisplay": string|null, "portfolioDisplay": string|null
-  },
   "date": string,
   "recipientBlock": string,
   "salutation": string,
@@ -51,38 +48,27 @@ const SCHEMA_HINT = `{
 }`;
 
 function renderMarkdown(c: TailoredCoverLetter): string {
-  const contact = [
-    c.contact.email,
-    c.contact.phone,
-    c.contact.location,
-    c.contact.linkedinDisplay,
-    c.contact.portfolioDisplay,
-  ].filter(Boolean);
+  const contact = [c.contact.email, c.contact.phone, c.contact.location, c.contact.linkedinDisplay, c.contact.portfolioDisplay].filter(Boolean);
   const lines: string[] = [];
   lines.push(`# ${c.name}`);
   if (contact.length) lines.push(contact.join(' · '));
-  lines.push('');
-  lines.push(c.date);
-  lines.push('');
-  lines.push(c.recipientBlock);
-  lines.push('');
-  lines.push(c.salutation);
-  lines.push('');
-  for (const p of c.bodyParagraphs) {
-    lines.push(p);
-    lines.push('');
-  }
-  lines.push(c.closing);
-  lines.push(c.name);
+  lines.push('', c.date, '', c.recipientBlock, '', c.salutation, '');
+  for (const p of c.bodyParagraphs) lines.push(p, '');
+  lines.push(c.closing, c.name);
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
 }
 
 function todayPretty(): string {
-  return new Date().toLocaleDateString('en-AU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  return new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+/** Load this job's assembled résumé — the grounding source. Assemble if missing. */
+async function loadAssembledResume(jobId: string, slug: string, outputDir: string, force?: boolean): Promise<TailoredResume> {
+  const resumeJsonPath = path.join(outputDir, `${slug}-resume.json`);
+  if (force || !fs.existsSync(resumeJsonPath)) {
+    await assembleResume(jobId, { force });
+  }
+  return JSON.parse(fs.readFileSync(resumeJsonPath, 'utf-8')) as TailoredResume;
 }
 
 export type GenerateCoverLetterResult = {
@@ -92,25 +78,23 @@ export type GenerateCoverLetterResult = {
   mdPath: string;
   letter: TailoredCoverLetter;
   markdown: string;
+  /** True when the draft failed grounding twice and was routed to review. */
+  needsReview?: boolean;
+  violations?: ClaimViolation[];
+  reviewPath?: string;
 };
 
-export type GenerateCoverLetterOptions = {
-  /** Force regeneration even if cached. */
-  force?: boolean;
-};
+export type GenerateCoverLetterOptions = { force?: boolean };
 
 export async function generateCoverLetter(jobId: string, opts: GenerateCoverLetterOptions = {}): Promise<GenerateCoverLetterResult> {
   const job: Job | null = db.getJob(jobId);
   if (!job) throw new Error(`generate-cover-letter: ${jobId} not in DB. Run seek-extract first.`);
 
-  const summary: JobSummary = await summarizeJob(jobId);
-  const match: MatchAnalysis = await matchJob(jobId, { summary });
-  const { profile, markdown: profileMd } = await ensureProfile();
-
   const slug = artefactBase(job);
   const outputDir = applicationDir(job);
   const jsonPath = path.join(outputDir, `${slug}-cover-letter.json`);
   const mdPath = path.join(outputDir, `${slug}-cover-letter.md`);
+  const reviewPath = path.join(outputDir, `${slug}-cover-letter.NEEDS_REVIEW.md`);
 
   if (!opts.force && fs.existsSync(jsonPath) && fs.existsSync(mdPath)) {
     const cached = JSON.parse(fs.readFileSync(jsonPath, 'utf-8')) as TailoredCoverLetter;
@@ -119,65 +103,107 @@ export async function generateCoverLetter(jobId: string, opts: GenerateCoverLett
     return { jobId, outputDir, jsonPath, mdPath, letter: cached, markdown };
   }
 
-  log.info({ jobId, model: config.llm.model }, 'generate-cover-letter: calling LLM');
-  const tailored = await callJson<Partial<TailoredCoverLetter>>({
-    step: 'generate-cover-letter',
-    systemPrompt: SYSTEM_PROMPT,
-    userPrompt: `${SCHEMA_HINT}
+  // Grounding: ONLY this job's selected bullets + chosen summary variant.
+  const summary: JobSummary = await summarizeJob(jobId);
+  const resume = await loadAssembledResume(jobId, slug, outputDir, opts.force);
+  const selectedBullets = [
+    ...resume.experience.flatMap((e) => e.highlights),
+    ...resume.projects.flatMap((p) => p.highlights),
+  ];
+  const today = todayPretty();
+  const grounding = buildGrounding(ensureLibrary().library, selectedBullets, {
+    jobTitle: job.title,
+    summary: resume.summary,
+    today,
+  });
+
+  const approvedFacts = `APPROVED FACTS — the ONLY things you may claim about the candidate:
+SUMMARY: ${resume.summary}
+SELECTED BULLETS:
+${selectedBullets.map((b) => `- ${b}`).join('\n')}`;
+
+  const baseUserPrompt = `${SCHEMA_HINT}
 
 JOB: ${job.title} @ ${job.company ?? 'Unknown'}
-TODAY (use as date): ${todayPretty()}
+TODAY (use as date): ${today}
+ROLE CONTEXT (for paragraph 1 only — about the job, not the candidate):
+${summary.oneLineSummary}
+${(summary.responsibilities ?? []).slice(0, 4).map((r) => `- ${r}`).join('\n')}
 
-JOB SUMMARY:
-${JSON.stringify(summary, null, 2)}
+${approvedFacts}`;
 
-MATCH ANALYSIS:
-${JSON.stringify(match, null, 2)}
+  let lastLetter: TailoredCoverLetter | null = null;
+  let lastViolations: ClaimViolation[] = [];
 
-CANDIDATE PROFILE (structured):
-${JSON.stringify(profile, null, 2)}
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const avoidBlock = lastViolations.length
+      ? `\n\nYOUR PREVIOUS DRAFT WAS REJECTED. Do NOT make these unsupported claims again:\n${lastViolations.map((v) => `- ${v.value} (${v.reason})`).join('\n')}`
+      : '';
 
-CANDIDATE PROFILE MARKDOWN (authoritative for project framing):
-${profileMd}`,
-  });
+    log.info({ jobId, attempt, model: config.llm.model }, 'generate-cover-letter: drafting');
+    const tailored = await callJson<Partial<TailoredCoverLetter>>({
+      step: 'generate-cover-letter',
+      systemPrompt: SYSTEM_PROMPT,
+      userPrompt: baseUserPrompt + avoidBlock,
+    });
 
-  const letter: TailoredCoverLetter = {
-    name: tailored.name ?? profile.name,
-    contact: {
-      email: tailored.contact?.email ?? profile.contact.email,
-      phone: tailored.contact?.phone ?? profile.contact.phone,
-      location: tailored.contact?.location ?? profile.contact.location,
-      linkedinDisplay: tailored.contact?.linkedinDisplay ?? profile.contact.linkedin,
-      portfolioDisplay: tailored.contact?.portfolioDisplay ?? profile.contact.website,
-    },
-    date: tailored.date ?? todayPretty(),
-    recipientBlock: tailored.recipientBlock ?? `Hiring Team\n${job.company ?? ''}`.trim(),
-    salutation: tailored.salutation ?? 'Dear Hiring Team,',
-    bodyParagraphs: (tailored.bodyParagraphs ?? []).slice(0, 4),
-    closing: tailored.closing ?? 'Kind regards,',
-  };
+    const letter: TailoredCoverLetter = {
+      name: resume.name,
+      contact: {
+        email: resume.contact.email,
+        phone: resume.contact.phone,
+        location: resume.contact.location,
+        linkedinDisplay: resume.contact.linkedinDisplay ?? resume.contact.linkedinUrl,
+        portfolioDisplay: resume.contact.portfolioDisplay ?? resume.contact.portfolioUrl,
+      },
+      date: tailored.date ?? today,
+      recipientBlock: tailored.recipientBlock ?? `Hiring Team\n${job.company ?? ''}`.trim(),
+      salutation: tailored.salutation ?? 'Dear Hiring Team,',
+      bodyParagraphs: (tailored.bodyParagraphs ?? []).slice(0, 4),
+      closing: tailored.closing ?? 'Kind regards,',
+    };
+    if (letter.bodyParagraphs.length === 0) throw new Error('generate-cover-letter: LLM returned no body paragraphs');
 
-  if (letter.bodyParagraphs.length === 0) {
-    throw new Error('generate-cover-letter: LLM returned no body paragraphs');
+    // ── The guardrail. Validate the prose against the grounding. ──
+    const result = await validateProse(letter.bodyParagraphs.join('\n\n'), grounding);
+    lastLetter = letter;
+    lastViolations = result.violations;
+    if (result.ok) {
+      const markdown = renderMarkdown(letter);
+      fs.mkdirSync(outputDir, { recursive: true });
+      fs.writeFileSync(jsonPath, JSON.stringify(letter, null, 2), 'utf-8');
+      fs.writeFileSync(mdPath, markdown, 'utf-8');
+      if (fs.existsSync(reviewPath)) fs.rmSync(reviewPath);
+      db.updateApplicationFields(jobId, { coverLetterMd: markdown, outputDir, generatedAt: new Date().toISOString(), model: config.llm.model });
+      log.info({ jobId, attempt }, 'generate-cover-letter: complete (grounding passed)');
+      return { jobId, outputDir, jsonPath, mdPath, letter, markdown };
+    }
+    log.warn({ jobId, attempt, violations: result.violations.length }, 'generate-cover-letter: grounding failed');
   }
 
-  const markdown = renderMarkdown(letter);
-
+  // Two attempts failed → review queue. Do NOT emit a clean letter or PDF.
+  const letter = lastLetter as TailoredCoverLetter;
+  const reviewMd = [
+    `# ⚠ COVER LETTER — NEEDS REVIEW (unsupported claims after ${MAX_ATTEMPTS} attempts)`,
+    `Job: ${job.title} @ ${job.company ?? ''}`,
+    '',
+    `## Unsupported claims (fix or confirm before sending):`,
+    formatViolations(lastViolations),
+    '',
+    `## Draft (NOT validated — do not send as-is):`,
+    '',
+    renderMarkdown(letter),
+  ].join('\n');
   fs.mkdirSync(outputDir, { recursive: true });
-  fs.writeFileSync(jsonPath, JSON.stringify(letter, null, 2), 'utf-8');
-  fs.writeFileSync(mdPath, markdown, 'utf-8');
+  fs.writeFileSync(reviewPath, reviewMd, 'utf-8');
+  // Ensure no stale clean output lingers.
+  for (const p of [jsonPath, mdPath]) if (fs.existsSync(p)) fs.rmSync(p);
+  db.updateApplicationFields(jobId, { notes: `cover-letter NEEDS_REVIEW: ${lastViolations.length} unsupported claim(s)` });
+  log.warn({ jobId, violations: lastViolations.length, reviewPath }, 'generate-cover-letter: routed to review (no clean output)');
 
-  db.updateApplicationFields(jobId, {
-    coverLetterMd: markdown,
-    outputDir,
-    generatedAt: new Date().toISOString(),
-    model: config.llm.model,
-  });
-
-  log.info(
-    { jobId, outputDir, paragraphs: letter.bodyParagraphs.length, mdChars: markdown.length },
-    'generate-cover-letter: complete',
-  );
-
-  return { jobId, outputDir, jsonPath, mdPath, letter, markdown };
+  return {
+    jobId, outputDir, jsonPath, mdPath, letter,
+    markdown: renderMarkdown(letter),
+    needsReview: true, violations: lastViolations, reviewPath,
+  };
 }

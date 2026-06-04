@@ -97,6 +97,29 @@ CREATE TABLE IF NOT EXISTS agent_runs (
   started_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Gap tracker: every JD requirement the content library (profile_v3.md) does
+-- NOT support. Aggregated by norm_key into the candidate's learning roadmap.
+CREATE TABLE IF NOT EXISTS jd_gaps (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id      TEXT NOT NULL,
+  requirement TEXT NOT NULL,
+  norm_key    TEXT NOT NULL,   -- normalized requirement, for frequency ranking
+  kind        TEXT,            -- 'tech' | 'must_have' | 'hard'
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Outreach review queue: LLM-drafted, human-approved-and-sent. Never auto-sent.
+CREATE TABLE IF NOT EXISTS outreach_drafts (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id       TEXT NOT NULL,
+  contact_name TEXT NOT NULL,
+  contact_role TEXT,
+  channel      TEXT NOT NULL DEFAULT 'linkedin',  -- 'linkedin' | 'email'
+  draft        TEXT NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'pending',    -- 'pending' | 'approved' | 'sent' | 'discarded'
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `;
 
 export const SCHEMA_INDEXES_SQL = `
@@ -107,6 +130,11 @@ CREATE INDEX IF NOT EXISTS idx_jobs_source  ON jobs(source);
 CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
 CREATE INDEX IF NOT EXISTS idx_applications_recommendation ON applications(recommendation);
 CREATE INDEX IF NOT EXISTS idx_applications_score ON applications(score_out_of_5);
+
+CREATE INDEX IF NOT EXISTS idx_jd_gaps_norm ON jd_gaps(norm_key);
+CREATE INDEX IF NOT EXISTS idx_jd_gaps_job ON jd_gaps(job_id);
+CREATE INDEX IF NOT EXISTS idx_outreach_job ON outreach_drafts(job_id);
+CREATE INDEX IF NOT EXISTS idx_outreach_status ON outreach_drafts(status);
 `;
 
 /**

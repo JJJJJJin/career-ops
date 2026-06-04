@@ -49,6 +49,17 @@ export type JobSearchStub = {
   isNew: boolean;
 };
 
+/** A blocking requirement the go/no-go gate checks against the real profile. */
+export type HardMustHave = {
+  kind: 'years_experience' | 'citizenship_or_pr' | 'security_clearance' | 'pervasive_stack' | 'other';
+  /** Human-readable requirement text (verbatim or close to the JD). */
+  detail: string;
+  /** For years_experience: the number of years demanded. */
+  years?: number;
+  /** For pervasive_stack: the single technology that runs through the whole posting. */
+  tech?: string;
+};
+
 export type JobSummary = {
   oneLineSummary: string;
   responsibilities: string[];
@@ -57,6 +68,13 @@ export type JobSummary = {
   techStack: string[];
   domain: string;
   seniority: string;
+  // ── JD-parser extensions (optional; absent on legacy rows) ──
+  /** Keywords/skills to mirror, for resume vocabulary alignment. */
+  keywords?: string[];
+  /** What the role is really about, in a few words. */
+  primaryEmphasis?: string;
+  /** Blocking requirements, evaluated by the go/no-go gate. */
+  hardMustHaves?: HardMustHave[];
 };
 
 export type StrengthCitation = { requirement: string; evidence: string };

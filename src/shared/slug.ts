@@ -6,9 +6,9 @@
 //   • FILES   <Name>-<Position>-<phone>     — these are what an employer's HR
 //     sees (the uploaded resume/cover filename), so they carry YOUR identity
 //     (name, role, phone) and NOT the company name.
-import fs from 'node:fs';
 import path from 'node:path';
-import { config, profileJsonPath } from './config.js';
+import { config } from './config.js';
+import { ensureLibrary } from './library/parse.js';
 import type { Job, JobSourceName } from './db/types.js';
 
 export function slug(s: string): string {
@@ -43,16 +43,16 @@ function dateSegment(job: Pick<Job, 'postedDate' | 'fetchedAt'>): string {
   return (raw.slice(0, 10) || 'undated');
 }
 
-// Cache the applicant identity (name + phone) read from profile.json.
+// Cache the applicant identity (name + phone) read from the content library.
 let _identity: { name: string; phone: string } | null = null;
 function applicantIdentity(): { name: string; phone: string } {
   if (_identity) return _identity;
   let name = 'Applicant';
   let phone = '';
   try {
-    const p = JSON.parse(fs.readFileSync(profileJsonPath(), 'utf-8')) as { name?: string; contact?: { phone?: string } };
-    if (p.name) name = p.name;
-    if (p.contact?.phone) phone = p.contact.phone;
+    const { library } = ensureLibrary();
+    if (library.contact.name) name = library.contact.name;
+    if (library.contact.phone) phone = library.contact.phone;
   } catch {
     /* fall back to defaults */
   }

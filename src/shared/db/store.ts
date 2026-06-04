@@ -586,6 +586,95 @@ class DbStore {
       scoreBuckets: { strong, borderline, skip, unscored },
     };
   }
+
+  // ─── gap tracker ─────────────────────────────────────────────────────
+  /** Replace this job's gaps with a fresh set (idempotent across re-runs). */
+  recordGaps(jobId: string, gaps: Array<{ requirement: string; kind: string }>): void {
+    const del = this.db.prepare(`DELETE FROM jd_gaps WHERE job_id = ?`);
+    const ins = this.db.prepare(
+      `INSERT INTO jd_gaps (job_id, requirement, norm_key, kind) VALUES (@job_id, @requirement, @norm_key, @kind)`,
+    );
+    const tx = this.db.transaction(() => {
+      del.run(jobId);
+      for (const g of gaps) {
+        const requirement = g.requirement.trim();
+        if (!requirement) continue;
+        ins.run({ job_id: jobId, requirement, norm_key: normGapKey(requirement), kind: g.kind });
+      }
+    });
+    tx();
+  }
+
+  /** Aggregate gaps across all JDs, ranked by frequency (the learning roadmap). */
+  aggregateGaps(): Array<{ normKey: string; requirement: string; count: number; jobs: number }> {
+    return this.db
+      .prepare(
+        `SELECT norm_key AS normKey,
+                MIN(requirement) AS requirement,
+                COUNT(*) AS count,
+                COUNT(DISTINCT job_id) AS jobs
+           FROM jd_gaps
+          GROUP BY norm_key
+          ORDER BY jobs DESC, count DESC, normKey ASC`,
+      )
+      .all() as Array<{ normKey: string; requirement: string; count: number; jobs: number }>;
+  }
+
+  // ─── outreach drafts ─────────────────────────────────────────────────
+  insertOutreachDraft(d: {
+    jobId: string;
+    contactName: string;
+    contactRole: string | null;
+    channel: string;
+    draft: string;
+    status?: string;
+  }): number {
+    const res = this.db
+      .prepare(
+        `INSERT INTO outreach_drafts (job_id, contact_name, contact_role, channel, draft, status)
+         VALUES (@job_id, @contact_name, @contact_role, @channel, @draft, @status)`,
+      )
+      .run({
+        job_id: d.jobId,
+        contact_name: d.contactName,
+        contact_role: d.contactRole,
+        channel: d.channel,
+        draft: d.draft,
+        status: d.status ?? 'pending',
+      });
+    return Number(res.lastInsertRowid);
+  }
+
+  listOutreachDrafts(opts: { status?: string; jobId?: string } = {}): Array<{
+    id: number;
+    jobId: string;
+    contactName: string;
+    contactRole: string | null;
+    channel: string;
+    draft: string;
+    status: string;
+    createdAt: string;
+  }> {
+    const where: string[] = [];
+    const params: Record<string, string> = {};
+    if (opts.status) { where.push('status = @status'); params.status = opts.status; }
+    if (opts.jobId) { where.push('job_id = @jobId'); params.jobId = opts.jobId; }
+    const sql = `SELECT id, job_id AS jobId, contact_name AS contactName, contact_role AS contactRole,
+                        channel, draft, status, created_at AS createdAt
+                   FROM outreach_drafts
+                   ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+                  ORDER BY created_at DESC`;
+    return this.db.prepare(sql).all(params) as ReturnType<DbStore['listOutreachDrafts']>;
+  }
+
+  updateOutreachDraftStatus(id: number, status: string): void {
+    this.db.prepare(`UPDATE outreach_drafts SET status = ? WHERE id = ?`).run(status, id);
+  }
+}
+
+/** Normalize a requirement for frequency aggregation (lowercase, collapse ws). */
+function normGapKey(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9+#./ -]/g, '').replace(/\s+/g, ' ').trim();
 }
 
 export const db = new DbStore();

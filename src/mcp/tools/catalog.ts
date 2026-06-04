@@ -12,7 +12,10 @@ import { indeedSearch } from '../../tools/indeed-search/index.js';
 import { builtinSearch } from '../../tools/builtin-search/index.js';
 import { detectSource } from '../../shared/jobs/registry.js';
 import { evaluateJob } from '../../tools/evaluate-job/index.js';
-import { generateResume } from '../../tools/generate-resume/index.js';
+import { assembleResume } from '../../tools/assemble-resume/index.js';
+import { goNoGo } from '../../tools/go-no-go/index.js';
+import { aggregateGaps } from '../../tools/gap-report/index.js';
+import { ensureLibrary } from '../../shared/library/parse.js';
 import { generateCoverLetter } from '../../tools/generate-cover-letter/index.js';
 import { generateCompanyBrief } from '../../tools/generate-company-brief/index.js';
 import { renderResumePdf } from '../../tools/render-resume-pdf/index.js';
@@ -22,7 +25,6 @@ import { queryJobs } from '../../tools/query-jobs/index.js';
 import { showJob } from '../../tools/show-job/index.js';
 import { markJob } from '../../tools/mark-job/index.js';
 import { jobStats } from '../../tools/job-stats/index.js';
-import { distillProfile } from '../../tools/distill-profile/index.js';
 import { sendFiles } from '../../tools/send-files/index.js';
 import { writeTracker } from '../../shared/db/view.js';
 import { applyJob } from '../../workflows/apply-job.js';
@@ -116,12 +118,22 @@ export function registerCatalogTools(server: McpServer): void {
   // ─── generation ───────────────────────────────────────────────────────────
   const jobIdInput = { jobId: z.string(), force: z.boolean().optional() };
   server.registerTool(
-    'generate_resume',
-    { title: 'Generate tailored resume', description: 'Generate a job-tailored resume (.json + .md) for a jobId already in the DB.', inputSchema: jobIdInput },
+    'assemble_resume',
+    { title: 'Assemble tailored resume (deterministic)', description: 'Assemble a job-tailored resume by SELECTING pre-vetted bullets from the content library (profile_v3.md). No content is generated; every line is validated to trace back to the library. Preferred over generate_resume.', inputSchema: jobIdInput },
     async ({ jobId, force }) => guard(async () => {
-      const r = await generateResume(jobId, { force });
-      return ok({ jobId, outputDir: r.outputDir, resumeJsonPath: r.resumeJsonPath, resumeMdPath: r.resumeMdPath });
+      const r = await assembleResume(jobId, { force });
+      return ok({ jobId, outputDir: r.outputDir, resumeJsonPath: r.resumeJsonPath, resumeMdPath: r.resumeMdPath, report: r.report });
     }),
+  );
+  server.registerTool(
+    'go_no_go',
+    { title: 'Go / no-go gate', description: 'Compare a JD\'s hard must-haves (years, PR/citizenship, clearance, pervasive stack) against the real profile. Returns go | low-yield with reasons.', inputSchema: { jobId: z.string() } },
+    async ({ jobId }) => guard(async () => ok(await goNoGo(jobId))),
+  );
+  server.registerTool(
+    'gap_report',
+    { title: 'Cumulative gap report', description: 'JD requirements not in the content library, ranked by how many postings asked for them — the candidate\'s learning roadmap.', inputSchema: {} },
+    async () => guard(async () => ok({ gaps: aggregateGaps() })),
   );
   server.registerTool(
     'generate_cover_letter',
@@ -252,13 +264,19 @@ export function registerCatalogTools(server: McpServer): void {
     async () => guard(async () => ok({ trackerPath: writeTracker() })),
   );
 
-  // ─── profile & delivery ───────────────────────────────────────────────────
+  // ─── content library & delivery ───────────────────────────────────────────
   server.registerTool(
-    'distill_profile',
-    { title: 'Distill profile', description: 'Convert profile/profile.md → profile/profile.json (structured, hash-cached).', inputSchema: { force: z.boolean().optional() } },
-    async ({ force }) => guard(async () => {
-      const r = await distillProfile({ force });
-      return ok({ cached: r.cached, email: r.profile.contact?.email ?? null }, r.cached ? 'profile up to date (cached)' : 'profile re-distilled');
+    'parse_library',
+    { title: 'Parse content library', description: 'Parse + validate profile_v3.md (the résumé content library) and self-test that each archetype assembles into a fully traceable résumé.', inputSchema: {} },
+    async () => guard(async () => {
+      const { library } = ensureLibrary();
+      return ok({
+        sourceHash: library.sourceHash,
+        experience: library.experience.length,
+        projects: library.projects.length,
+        summaryVariants: Object.keys(library.summaryVariants).filter((k) => library.summaryVariants[k as keyof typeof library.summaryVariants]),
+        synonymGroups: library.synonyms.length,
+      });
     }),
   );
 

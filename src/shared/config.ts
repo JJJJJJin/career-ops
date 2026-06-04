@@ -146,10 +146,11 @@ export const config = {
   },
 } as const;
 
-export function profileMarkdownPath(): string {
-  return path.join(config.paths.profileDir, 'profile.md');
-}
-
-export function profileJsonPath(): string {
-  return path.join(config.paths.profileDir, 'profile.json');
+/**
+ * The vetted master content library (profile_v3.md). The single source of truth
+ * for résumé assembly — every output line must trace back to it. (The old
+ * profile.md/profile.json + distill-profile path has been removed.)
+ */
+export function profileLibraryPath(): string {
+  return path.join(config.paths.profileDir, process.env.PROFILE_LIBRARY ?? 'profile_v3.md');
 }

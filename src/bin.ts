@@ -18,19 +18,23 @@ const COMMANDS: Record<string, () => Promise<{ runCli: (argv: string[]) => Promi
   'builtin-extract': () => import('./tools/builtin-extract/cli.js'),
   'web-distill': () => import('./tools/web-distill/cli.js'),
 
-  // profile
-  'distill-profile': () => import('./tools/distill-profile/cli.js'),
+  // content library
+  'parse-library': () => import('./tools/parse-library/cli.js'),
 
   // evaluation
   'flag-eligibility': () => import('./tools/flag-eligibility/cli.js'),
   'summarize-job': () => import('./tools/summarize-job/cli.js'),
+  'classify-jd': () => import('./tools/classify-jd/cli.js'),
+  'go-no-go': () => import('./tools/go-no-go/cli.js'),
   'match-job': () => import('./tools/match-job/cli.js'),
   'evaluate-job': () => import('./tools/evaluate-job/cli.js'),
 
-  // generation
-  'generate-resume': () => import('./tools/generate-resume/cli.js'),
+  // generation (assemble-resume = deterministic selection from profile_v3.md)
+  'assemble-resume': () => import('./tools/assemble-resume/cli.js'),
   'generate-cover-letter': () => import('./tools/generate-cover-letter/cli.js'),
   'generate-company-brief': () => import('./tools/generate-company-brief/cli.js'),
+  'outreach-draft': () => import('./tools/outreach-draft/cli.js'),
+  'gap-report': () => import('./tools/gap-report/cli.js'),
 
   // rendering
   'render-resume-pdf': () => import('./tools/render-resume-pdf/cli.js'),
@@ -63,12 +67,12 @@ const COMMANDS: Record<string, () => Promise<{ runCli: (argv: string[]) => Promi
 
 const TOOL_GROUPS: Array<{ heading: string; tools: string[] }> = [
   { heading: 'Discovery & ingestion', tools: ['seek-search', 'seek-extract', 'linkedin-search', 'linkedin-extract', 'indeed-search', 'indeed-extract', 'builtin-search', 'builtin-extract', 'web-distill'] },
-  { heading: 'Profile', tools: ['distill-profile'] },
-  { heading: 'Evaluation', tools: ['flag-eligibility', 'summarize-job', 'match-job', 'evaluate-job'] },
-  { heading: 'Generation', tools: ['generate-resume', 'generate-cover-letter', 'generate-company-brief'] },
+  { heading: 'Content library', tools: ['parse-library'] },
+  { heading: 'Evaluation', tools: ['flag-eligibility', 'summarize-job', 'classify-jd', 'go-no-go', 'match-job', 'evaluate-job'] },
+  { heading: 'Generation', tools: ['assemble-resume', 'generate-cover-letter', 'generate-company-brief', 'outreach-draft'] },
   { heading: 'Rendering', tools: ['render-resume-pdf', 'render-cover-letter-pdf', 'render-company-brief-pdf'] },
   { heading: 'Delivery', tools: ['send-files'] },
-  { heading: 'Tracking', tools: ['query-jobs', 'show-job', 'mark-job', 'job-stats', 'render-tracker'] },
+  { heading: 'Tracking', tools: ['query-jobs', 'show-job', 'mark-job', 'job-stats', 'render-tracker', 'gap-report'] },
   { heading: 'Workflows', tools: ['apply-job', 'daily-pipeline'] },
   { heading: 'Agent engine', tools: ['run-flow', 'agent-provide'] },
   { heading: 'SEEK automation', tools: ['seek-login', 'seek-resumes', 'seek-apply'] },

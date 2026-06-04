@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { config, profileJsonPath } from '../shared/config.js';
+import { config, profileLibraryPath } from '../shared/config.js';
 import { listPlaybooks, loadContract, loadPlaybook } from './playbooks.js';
 import { runs } from './runstate.js';
 
@@ -52,13 +52,13 @@ export function registerResources(server: McpServer): void {
   );
 
   server.registerResource(
-    'profile-json',
-    'profile://json',
-    { title: 'Structured profile', description: 'profile/profile.json — the distilled CV the generators use.', mimeType: 'application/json' },
+    'content-library',
+    'profile://library',
+    { title: 'Résumé content library', description: 'profile/profile_v3.md — the vetted single source of truth résumés are assembled from.', mimeType: 'text/markdown' },
     async (uri) => {
-      const p = profileJsonPath();
-      const text = fs.existsSync(p) ? fs.readFileSync(p, 'utf-8') : '{}';
-      return { contents: [{ uri: uri.href, mimeType: 'application/json', text }] };
+      const p = profileLibraryPath();
+      const text = fs.existsSync(p) ? fs.readFileSync(p, 'utf-8') : '';
+      return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text }] };
     },
   );
 }

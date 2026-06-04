@@ -58,8 +58,17 @@ npm run career-ops -- --help
 
 ## Important conventions
 
-- `profile/profile.md` is the user's CV (free-form markdown, gitignored).
-  Use `distill-profile` to convert it to `profile/profile.json` (structured).
+- `profile/profile_v3.md` is the **content library** — the single source of
+  truth for résumé content. Résumés are ASSEMBLED, not generated: `assemble-resume`
+  deterministically SELECTS pre-vetted, tagged bullets from it per JD (archetype
+  via `classify-jd`), aligns vocabulary via the library's synonym map, and a
+  traceability invariant (`shared/library/traceability.ts`) fails the run if any
+  output line does not trace back to the library. Edit the résumé by editing
+  `profile_v3.md`; validate with `career-ops parse-library`. The LLM is used only
+  for JD parsing/classification and outreach drafting — never résumé content.
+- `profile/profile.md` + `distill-profile` → `profile/profile.json` is the
+  LEGACY path, still used by `generate-resume` (kept for comparison) and the
+  cover-letter/match tools. Not used for résumé assembly.
 - `data/seek.sqlite3` is the source of truth. `data/applications.md` is a
   generated read-only view — never hand-edit.
 - Per-job artefacts go to `output/<source>/<company-slug>-<role-slug>/`
