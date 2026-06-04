@@ -13,6 +13,7 @@ import { detectSource, sourceForJobId } from '../../shared/jobs/registry.js';
 import { flagEligibility } from '../flag-eligibility/index.js';
 import { summarizeJob } from '../summarize-job/index.js';
 import { matchJob } from '../match-job/index.js';
+import { ensureLibrary } from '../../shared/library/parse.js';
 
 const log = createLogger('evaluate-job');
 
@@ -96,6 +97,28 @@ export async function evaluateJob(jobIdOrUrl: string, opts: EvaluateOptions = {}
   // Step 3: summarize, match.
   const summary = await summarizeJob(job.jobId, { force: opts.force });
   const match = await matchJob(job.jobId, { force: opts.force, summary });
+
+  // Step 4: record tech-stack gaps for every evaluated job (drives the learning roadmap).
+  // Cheap — deterministic string matching, no LLM.
+  try {
+    const { library } = ensureLibrary();
+    const libBlob = [
+      ...library.experience.flatMap((e) => e.bullets.map((b) => b.text)),
+      ...library.projects.flatMap((p) => [...p.bullets.map((b) => b.text), ...p.tech, p.role ?? '']),
+      ...library.skills.flatMap((g) => g.items),
+    ].join(' \n ').toLowerCase();
+    const gaps: Array<{ requirement: string; kind: string }> = [];
+    for (const tech of summary.techStack) {
+      const t = tech.toLowerCase().trim();
+      if (!t) continue;
+      if (!new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(libBlob)) {
+        gaps.push({ requirement: tech, kind: 'tech' });
+      }
+    }
+    if (gaps.length) db.recordGaps(job.jobId, gaps);
+  } catch (err) {
+    log.warn({ jobId: job.jobId, err: (err as Error).message }, 'evaluate-job: gap recording skipped');
+  }
 
   return {
     job: { ...job, eligibilityFlags: eligibility.flags },
