@@ -1,235 +1,124 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{NAME}} — Resume</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
   body {
-    /* Office-style stack: DM Sans is the closest neutral business sans we ship.
-       Aptos/Calibri are listed so a rendering host with those installed will
-       look indistinguishable from the reference PDF. */
-    font-family: Arial, Helvetica, 'Noto Sans', 'Liberation Sans', sans-serif;
-    font-size: 11px;
-    line-height: 1.45;
+    font-family: Arial, Helvetica, 'Liberation Sans', 'Noto Sans', sans-serif;
+    font-size: 10.5px;
+    line-height: 1.42;
     color: #000;
-    background: #ffffff;
+    background: #fff;
   }
 
   .page {
     max-width: 760px;
     margin: 0 auto;
-    padding: 4px 4px 0;
+    padding: 2px 2px 0;
   }
 
-  /* === HEADER ============================================================ */
-  .header {
-    text-align: center;
-    margin-bottom: 10px;
-  }
+  /* === HEADER (left-aligned) ============================================= */
+  .header { margin-bottom: 9px; }
 
   .header h1 {
-    font-size: 20px;
+    font-size: 23px;
     font-weight: 700;
-    color: #000;
-    margin-bottom: 4px;
-  }
-
-  .contact-row {
-    font-size: 11px;
-    color: #000;
-    line-height: 1.4;
+    letter-spacing: 0.2px;
+    margin-bottom: 3px;
   }
 
   .contact-line {
     display: block;
-    text-align: center;
+    font-size: 10.5px;
+    color: #333;
+    line-height: 1.45;
+  }
+  .contact-line a { color: #333; text-decoration: none; }
+  .work-rights {
+    display: block;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #000;
+    margin-top: 2px;
   }
 
-  .contact-row a.contact-line {
-    color: #0563C1; /* Office hyperlink blue */
-    text-decoration: underline;
-  }
-
-  /* === SECTION BANNER ==================================================== */
-  .section {
-    margin-bottom: 10px;
-  }
+  /* === SECTION TITLE: bold uppercase + bottom rule (no banner) =========== */
+  .section { margin-bottom: 9px; }
 
   .section-title {
-    background: #D9E2F1;
-    padding: 4px 8px;
-    font-size: 11.5px;
+    font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.06em;
     color: #000;
-    margin-bottom: 7px;
+    border-bottom: 1px solid #000;
+    padding-bottom: 2px;
+    margin: 11px 0 6px;
   }
 
-  /* === SUMMARY (optional, rendered above EDUCATION when present) ========= */
-  .summary-text {
-    font-size: 11px;
-    color: #000;
-    padding: 0 2px;
-  }
+  /* === SUMMARY ========================================================== */
+  .summary-text { font-size: 10.5px; }
 
-  /* === EXPERIENCE & PROJECTS ============================================= */
-  .job, .project, .edu-item {
-    margin-bottom: 10px;
-    page-break-inside: avoid;
-    break-inside: avoid;
-    padding: 0 2px;
-  }
+  /* === SKILLS: "Category: a, b, c" plain lines ========================== */
+  .skill-item { font-size: 10.5px; line-height: 1.5; margin-bottom: 1px; }
+  .skill-category { font-weight: 700; }
 
-  .job-header, .edu-header {
+  /* === ENTRY ROWS (experience / projects / education) =================== */
+  .entry { margin-bottom: 8px; page-break-inside: avoid; break-inside: avoid; }
+
+  .entry-header {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    gap: 10px;
+    gap: 12px;
   }
-
-  .job-role, .edu-degree, .project-title {
-    font-weight: 700;
-    font-size: 11.5px;
-    color: #000;
-  }
-
-  .job-period, .edu-year {
-    font-weight: 400;
-    font-size: 11px;
-    color: #000;
+  .entry-left { font-size: 10.5px; }
+  .entry-title { font-weight: 700; }
+  .entry-org { font-weight: 400; }
+  .entry-right {
+    font-size: 10px;
+    color: #555;
     white-space: nowrap;
     flex-shrink: 0;
   }
 
-  .job-sub, .edu-sub {
-    font-size: 11px;
-    color: #000;
-    margin-top: 0;
-    margin-bottom: 2px;
-  }
+  .entry-sub { font-size: 10.5px; font-style: italic; color: #000; margin: 1px 0; }
+  .entry-desc { font-size: 10.5px; margin-top: 1px; }
 
-  .job ul, .project ul {
-    list-style: disc;
-    margin: 1px 0 0 22px;
-  }
+  .entry ul { list-style: disc; margin: 2px 0 0 17px; }
+  .entry li { font-size: 10.5px; line-height: 1.42; margin-bottom: 1.5px; }
 
-  .job li, .project li {
-    font-size: 11px;
-    line-height: 1.45;
-    color: #000;
-    margin-bottom: 1px;
-  }
+  /* === CERTIFICATIONS =================================================== */
+  .cert-item { font-size: 10.5px; margin-bottom: 1px; }
 
-  /* === PROJECTS extras =================================================== */
-  .project-badge {
-    font-size: 10px;
-    color: #444;
-    font-weight: 400;
-    margin-left: 6px;
-  }
-
-  .project-desc {
-    font-size: 11px;
-    color: #000;
-    margin-top: 1px;
-  }
-
-  .project-tech {
-    font-size: 10.5px;
-    color: #444;
-    margin-top: 2px;
-  }
-
-  /* === EDUCATION ========================================================= */
-  .edu-desc {
-    font-size: 11px;
-    color: #000;
-    margin-top: 1px;
-  }
-
-  /* === SKILLS — plain "Category: a | b | c" lines, no chips ============== */
-  .skills-grid {
-    display: block;
-    padding: 0 2px;
-  }
-
-  .skill-item {
-    font-size: 11px;
-    line-height: 1.5;
-    margin-bottom: 2px;
-    color: #000;
-  }
-
-  .skill-category {
-    font-weight: 400;
-  }
-
-  /* Education details bullet (matches reference layout). */
-  .edu-details {
-    list-style: disc;
-    margin: 1px 0 0 22px;
-  }
-
-  .edu-details li {
-    font-size: 11px;
-    line-height: 1.45;
-    color: #000;
-  }
-
-  /* === CORE COMPETENCIES — inline plain text, no pills =================== */
-  .competencies-text {
-    font-size: 11px;
-    line-height: 1.5;
-    color: #000;
-    padding: 0 2px;
-  }
-
-  /* === CERTIFICATIONS ==================================================== */
-  .cert-item {
-    font-size: 11px;
-    color: #000;
-    margin-bottom: 2px;
-    padding: 0 2px;
-  }
-
-  .cert-title {
-    font-weight: 400;
-  }
-
-  @media print {
-    .page { padding-top: 0; }
-  }
+  /* === COMPETENCIES (inline, only if present) ========================== */
+  .competencies-text { font-size: 10.5px; line-height: 1.5; }
 </style>
 </head>
 <body>
 <div class="page">
 
-  <!-- HEADER -->
   <div class="header">
     <h1>{{NAME}}</h1>
-    <div class="contact-row">{{CONTACT_ROW}}</div>
+    {{CONTACT_ROW}}
   </div>
 
-  <!-- Optional summary, rendered when present -->
+  <!-- Order: Summary → Skills → Experience → Projects → Education -->
   {{SUMMARY_BLOCK}}
 
-  <!-- Section order matches the reference layout: Education → Experience → Skills.
-       Projects, competencies, certifications still render if the data has them. -->
-  {{EDUCATION_BLOCK}}
+  {{SKILLS_BLOCK}}
+
+  {{COMPETENCIES_BLOCK}}
 
   {{EXPERIENCE_BLOCK}}
 
   {{PROJECTS_BLOCK}}
 
-  {{SKILLS_BLOCK}}
-
-  {{COMPETENCIES_BLOCK}}
+  {{EDUCATION_BLOCK}}
 
   {{CERTIFICATIONS_BLOCK}}
 

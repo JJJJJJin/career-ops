@@ -48,6 +48,7 @@ function mapContact(c: ContentLibrary['contact']): TailoredContact {
     portfolioUrl: null,
     portfolioDisplay: null,
     github: url(c.github),
+    workRights: c.workRights,
   };
 }
 
@@ -130,6 +131,7 @@ function renderMarkdown(r: TailoredResume): string {
     r.contact.linkedinDisplay ?? r.contact.linkedinUrl, r.contact.github,
   ].filter(Boolean);
   if (contact.length) lines.push(contact.join(' · '));
+  if (r.contact.workRights) lines.push(`**${r.contact.workRights}**`);
   lines.push('');
   if (r.summary) { lines.push(`> ${r.summary}`); lines.push(''); }
   if (r.experience.length) {

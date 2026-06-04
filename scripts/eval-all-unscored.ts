@@ -7,8 +7,8 @@ for (const id of jobIds) {
   try {
     const result = await evaluateJob(id);
     done++;
-    const score = result.application?.scoreOutOf5 ?? '?';
-    const rec = result.application?.recommendation ?? '?';
+    const score = result.match?.scoreOutOf5 ?? '?';
+    const rec = result.match?.recommendation ?? '?';
     const company = result.job?.company ?? '?';
     const title = (result.job?.title ?? '').slice(0,45);
     console.log(`[${done}/51] ${score}/5 ${rec} — ${company} — ${title}`);

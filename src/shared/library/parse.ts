@@ -82,7 +82,10 @@ function parseSummaryVariants(lines: string[]): Record<Archetype, string> {
       key = (name === 'fullstack' ? 'full-stack' : name) as Archetype;
       continue;
     }
-    if (key) buf.push(raw.trim());
+    if (key) {
+      if (/^-{3,}$/.test(raw.trim())) continue; // skip the section's `---` rule
+      buf.push(raw.trim());
+    }
   }
   flush();
   return out;
@@ -189,12 +192,12 @@ function parseEducation(lines: string[]): ContentLibrary['education'] {
       continue;
     }
     if (!cur) continue;
-    const pair = kv(raw);
-    if (pair) {
-      const [k, v] = pair;
-      if (k.toLowerCase() === 'dates') cur.dates = v;
-      else cur.details = cur.details ? `${cur.details} ${v}` : v;
-    }
+    const dateLine = raw.match(/^\s*-\s*Dates:\s*(.*)$/i);
+    if (dateLine) { cur.dates = dateLine[1].trim(); continue; }
+    // Any other `- ...` line is a detail line — keep it verbatim (label included),
+    // whether or not it contains a colon (e.g. "Coursework: …" or "Foundations …").
+    const detail = raw.match(/^\s*-\s*(.+\S)\s*$/);
+    if (detail) cur.details = cur.details ? `${cur.details} ${detail[1].trim()}` : detail[1].trim();
   }
   push();
   return out;

@@ -1,16 +1,15 @@
 # career-ops
 
 A multi-source job-search pipeline (SEEK, LinkedIn, Indeed, Built In) you drive
-from Claude Code (or any terminal). Twenty-plus composable tools — scan, extract,
-evaluate, tailor, render — wired together as openclaw skills. The agent picks
-one tool or chains many depending on what you ask.
+from any agent or terminal. Thirty-plus composable capabilities — scan, extract,
+evaluate, tailor, render, track — built on ONE reusable core (`src/`) exposed two
+ways: **offline scripts** (`scripts/`) and an **MCP server** (`src/mcp/`). Any
+agent can run either; both call the same code.
 
-> Originally forked from [santifer/career-ops](https://github.com/santifer/career-ops).
-> This fork stripped it down to TypeScript + Playwright, multi-provider LLM
-> (OpenAI primary + DeepSeek fallback, also Gemini & Groq), and rebuilt every
-> step as a Claude Code skill so your local openclaw can compose them. SEEK
-> Australia is the original target; LinkedIn and Indeed Australia are wired in
-> through the same source-agnostic registry.
+> TypeScript + Playwright, multi-provider LLM (OpenAI/DeepSeek/Gemini/Anthropic),
+> source-agnostic registry. There are no skill manifests to install — an agent
+> learns the toolset by reading `scripts/cmd/<command>.ts` (args + output) and the
+> `src/` core it calls, or by running any command with no args for its usage.
 
 ## What you get per job
 
@@ -47,24 +46,24 @@ cd career-ops
 npm install
 npx playwright install chromium
 
-cp .env.example .env       # set ANTHROPIC_API_KEY
-$EDITOR profile/profile.md  # write your CV (see "Profile format" below)
+cp .env.example .env             # set an LLM key (+ TRACKER_DATABASE_URL, optional)
+$EDITOR profile/profile_v3.md    # your vetted content library (see "Profile format")
 
-./scripts/install-skills.sh # bakes absolute paths into ~/.claude/skills/career-ops/
-
-# Run from the terminal …
-./scripts/career-ops evaluate-job https://www.seek.com.au/job/12345678
+# Run any capability as a script …
+npx tsx scripts/career-ops.ts evaluate-job https://www.seek.com.au/job/12345678
 # (or `npm run career-ops -- evaluate-job <url>` — same thing)
 
-# … or just ask Claude Code:
-#   "should I apply to https://seek.com.au/job/12345678"
+# … or start the MCP server and drive it from an agent:
+npm run mcp-serve
 ```
 
 ## Tool catalog
 
-Every tool has a discrete CLI (`career-ops <tool>`) and a matching
-`openclaw/<tool>/SKILL.md` so Claude Code can invoke it from natural
-language. The pure functions are importable from `src/tools/<tool>/index.ts`.
+Every capability is runnable two ways from the SAME `src/` core:
+- **Script:** `npx tsx scripts/career-ops.ts <command>` (logic in `scripts/cmd/<command>.ts`).
+- **MCP tool:** the matching tool in `src/mcp/tools/` (start with `npm run mcp-serve`).
+
+The pure functions are importable from `src/tools/<command>/index.ts`.
 
 ### Discovery & ingestion
 
@@ -171,27 +170,23 @@ career-ops send-files --job 12345678
 career-ops send-files /tmp/screenshot.png /path/to/notes.pdf --text "fyi"
 ```
 
-## openclaw integration
+## Common chains
 
-Once `./scripts/install-skills.sh` has linked the skills into
-`~/.claude/skills/career-ops/`, your Claude Code instance can route from
-natural language:
+An agent maps natural language onto these commands (run as a script
+`npx tsx scripts/career-ops.ts <cmd>` or the matching MCP tool):
 
-| User says | openclaw chains |
+| User says | Chain |
 |---|---|
 | "find me python grad jobs this week" | `seek-search -q python --days 7` → `query-jobs --since-days 7 --eligible-only` |
 | "scan Indeed for AI engineer roles" | `indeed-search -q "ai engineer" --days 7` |
-| "find remote roles on Built In" | `builtin-search -q "software engineer" --location remote` |
 | "should I apply to https://seek.com.au/job/12345" | `evaluate-job 12345` |
-| "should I apply to https://au.indeed.com/viewjob?jk=abc…" | `evaluate-job <url>` (auto-routes through indeed-extract) |
 | "yes, apply" | `apply-job 12345` |
 | "what did I apply to last month?" | `query-jobs --status applied --since-days 30` |
 | "regenerate the resume PDF" | `render-resume-pdf 12345` |
 | "morning brief" | `daily-pipeline --source seek --source indeed` |
 | "I got rejected from Acme" | find jobId, then `mark-job <jobId> rejected` |
-
-Add new natural-language patterns by editing the `description:` field in
-the relevant `openclaw/<tool>/SKILL.md`.
+| "what skills do I keep missing?" | `gap-report` |
+| "sync the tracker" | `tracker-sync` |
 
 ## MCP server (stateful, agent-driven)
 
@@ -347,28 +342,26 @@ verify) but evaluation skips the LLM. Edit
 
 ```
 career-ops/
-├── package.json                  # bin: career-ops → dist/bin.js
-├── tsconfig.json
+├── package.json
+├── tsconfig.json                 # build (src → dist)
+├── tsconfig.typecheck.json       # typecheck (src + scripts)
 ├── .env.example
 ├── README.md                     # this file
-├── CLAUDE.md                     # short pointer for Claude Code
-├── profile/                      # gitignored — profile.md + profile.json
-├── data/                         # gitignored — seek.sqlite3 + applications.md
+├── CLAUDE.md                     # agent entrypoint
+├── profile/profile_v3.md         # gitignored — the résumé content library
+├── data/                         # gitignored — seek.sqlite3 + applications.md + tracker-outbox.jsonl
 ├── output/                       # gitignored — per-job artefacts
-├── reports/                      # gitignored — reserved
-├── templates/
-│   ├── resume.html               # adapted from career-ops
-│   ├── cover-letter.html
-│   └── states.yml
-├── fonts/                        # Space Grotesk + DM Sans
-├── scripts/
-│   └── install-skills.sh
-├── src/
-│   ├── bin.ts                    # CLI dispatcher
-│   ├── tools/<tool>/             # one dir per tool (index.ts + cli.ts)
-│   ├── workflows/                # apply-job, daily-pipeline
-│   └── shared/                   # logger, config, llm, browser, db, render, slug
-└── openclaw/<tool>/SKILL.md      # one skill manifest per tool + index
+├── templates/                    # resume / cover-letter / company-brief HTML
+├── fonts/
+├── playbooks/                    # MCP workflow playbooks
+├── scripts/                      # ── OFFLINE ENTRY ──
+│   ├── career-ops.ts             #   dispatcher: `npx tsx scripts/career-ops.ts <cmd>`
+│   └── cmd/<command>.ts          #   one thin runner per command → calls src/ core
+└── src/                          # ── REUSABLE CORE (used by scripts AND MCP) ──
+    ├── tools/<command>/index.ts  #   pure capability functions
+    ├── workflows/                #   apply-job, daily-pipeline
+    ├── shared/                   #   config, llm, db, browser, render, library, grounding, tracker
+    └── mcp/                      #   ── MCP ENTRY ── server + tools mirroring the catalog
 ```
 
 ## SQLite schema

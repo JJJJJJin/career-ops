@@ -16,6 +16,7 @@ import { assembleResume } from '../../tools/assemble-resume/index.js';
 import { goNoGo } from '../../tools/go-no-go/index.js';
 import { aggregateGaps } from '../../tools/gap-report/index.js';
 import { ensureLibrary } from '../../shared/library/parse.js';
+import * as tracker from '../../shared/tracker/index.js';
 import { generateCoverLetter } from '../../tools/generate-cover-letter/index.js';
 import { generateCompanyBrief } from '../../tools/generate-company-brief/index.js';
 import { renderResumePdf } from '../../tools/render-resume-pdf/index.js';
@@ -51,7 +52,14 @@ export function registerCatalogTools(server: McpServer): void {
     async ({ source, keywords, location, days, maxJobsPerKeyword }) =>
       guard(async () => {
         const results = await SEARCHERS[source]({ keywords, location, days, maxJobsPerKeyword });
-        return ok({ source, count: results.length, results }, `${source}: found ${results.length} job(s)`);
+        // Register discoveries in the shared tracker (dedup via ON CONFLICT; queues if offline).
+        if (tracker.isEnabled()) {
+          await tracker.flushOutbox();
+          for (const r of results) {
+            await tracker.discover({ source, sourceId: r.jobId, company: r.company, title: r.title, url: r.url });
+          }
+        }
+        return ok({ source, count: results.length, results, trackerPending: tracker.pendingCount() }, `${source}: found ${results.length} job(s)`);
       }),
   );
 
@@ -249,7 +257,7 @@ export function registerCatalogTools(server: McpServer): void {
         notes: z.string().optional(),
       },
     },
-    async ({ jobId, status, notes }) => guard(async () => ok(markJob(jobId, status, notes) as unknown as Record<string, unknown>, `${jobId} → ${status}`)),
+    async ({ jobId, status, notes }) => guard(async () => ok(await markJob(jobId, status, notes) as unknown as Record<string, unknown>, `${jobId} → ${status}`)),
   );
 
   server.registerTool(

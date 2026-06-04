@@ -11,6 +11,7 @@ import path from 'node:path';
 import { closeSession, launchSession, type BrowserSession } from '../../shared/browser/session.js';
 import { config } from '../../shared/config.js';
 import { db } from '../../shared/db/store.js';
+import * as tracker from '../../shared/tracker/index.js';
 import { createLogger } from '../../shared/logger.js';
 import { applicationDir, artefactBase } from '../../shared/slug.js';
 import { journal } from '../../shared/agent/journal.js';
@@ -104,7 +105,15 @@ async function applyOneJob(session: BrowserSession, jobId: string, submitMode: S
     fields.applyError = result.stoppedAt === 'questions' ? `stopped: ${result.unanswered?.length ?? 0} unanswered question(s)` : `stopped at ${result.stoppedAt}`;
   }
   db.updateApplicationFields(jobId, fields);
-  if (result.stoppedAt === 'submitted') db.setStatus(jobId, 'applied', 'auto-applied via SEEK quick apply');
+  if (result.stoppedAt === 'submitted') {
+    db.setStatus(jobId, 'applied', 'auto-applied via SEEK quick apply');
+    // Mirror the successful submit to the shared tracker (queues if offline).
+    await tracker.recordStatus(
+      { source: job.source, sourceId: job.jobId, company: job.company, title: job.title, url: job.url },
+      '已申请',
+      { appliedAt: fields.appliedAt, notes: 'auto-applied via SEEK quick apply' },
+    );
+  }
   journal.note(`outcome: stopped at ${result.stoppedAt}`, { applyState: fields.applyState, applyError: fields.applyError, screenshot: result.screenshotPath });
 
   return {

@@ -9,7 +9,8 @@ import { createLogger } from '../shared/logger.js';
 import { writeTracker } from '../shared/db/view.js';
 import { db } from '../shared/db/store.js';
 import { getSource } from '../shared/jobs/registry.js';
-import type { JobSourceName } from '../shared/db/types.js';
+import type { JobSourceName, JobSearchStub } from '../shared/db/types.js';
+import * as tracker from '../shared/tracker/index.js';
 import { evaluateJob } from '../tools/evaluate-job/index.js';
 import { applyJob } from './apply-job.js';
 
@@ -52,8 +53,25 @@ export async function runDailyPipeline(opts: DailyPipelineOptions = {}): Promise
     const r = await source.search({ keywords: opts.keywords });
     searchResults.push(...r);
   }
-  const newJobs = searchResults.filter((r) => r.isNew);
-  log.info({ found: searchResults.length, isNew: newJobs.length }, 'daily-pipeline: scan complete');
+
+  // Cross-machine dedup against the shared Postgres tracker: a job is "new" only
+  // if the tracker doesn't already have it (added here or on another machine).
+  // New jobs are registered in the tracker (status 未申请). If the tracker is
+  // unreachable we fall back to local SQLite dedup and queue the inserts.
+  const newJobs: JobSearchStub[] = [];
+  if (tracker.isEnabled()) await tracker.flushOutbox();
+  const bySource = new Map<string, JobSearchStub[]>();
+  for (const r of searchResults) bySource.set(r.source, [...(bySource.get(r.source) ?? []), r]);
+  for (const [src, group] of bySource) {
+    const known = tracker.isEnabled() ? await tracker.existing(src, group.map((r) => r.jobId)) : new Set<string>();
+    for (const r of group) {
+      const isNew = known ? !known.has(r.jobId) : r.isNew; // known===null → offline → local dedup
+      if (!isNew) continue;
+      newJobs.push(r);
+      await tracker.discover({ source: r.source, sourceId: r.jobId, company: r.company, title: r.title, url: r.url });
+    }
+  }
+  log.info({ found: searchResults.length, isNew: newJobs.length, trackerPending: tracker.pendingCount() }, 'daily-pipeline: scan complete');
 
   // Stage 2: extract + evaluate every new job (sequential to avoid hammering sources).
   log.info({ count: newJobs.length }, 'daily-pipeline: stage 2 — extract + evaluate new jobs');

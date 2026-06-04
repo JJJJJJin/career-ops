@@ -12,6 +12,8 @@ export type TailoredContact = {
   portfolioUrl: string | null;
   portfolioDisplay: string | null;
   github: string | null;
+  /** e.g. "Full working rights in Australia (no sponsorship required)". */
+  workRights: string | null;
 };
 
 export type TailoredExperience = {

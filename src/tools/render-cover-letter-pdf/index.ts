@@ -12,10 +12,10 @@ import type { TailoredCoverLetter } from '../generate-cover-letter/types.js';
 const log = createLogger('render-cover-letter-pdf');
 
 function buildContactLine(c: TailoredCoverLetter['contact']): string {
-  const parts = [c.email, c.phone, c.location, c.linkedinDisplay, c.portfolioDisplay]
+  const parts = [c.location, c.email, c.phone, c.linkedinDisplay, c.portfolioDisplay]
     .filter(Boolean)
     .map((s) => escapeHtml(s ?? ''));
-  return parts.join(' &nbsp;·&nbsp; ');
+  return parts.join('  |  ');
 }
 
 function buildRecipientBlock(text: string): string {

@@ -19,8 +19,8 @@ async function main() {
     try {
       const result = await evaluateJob(id);
       done++;
-      const score = result.application?.scoreOutOf5 ?? '?';
-      const rec = result.application?.recommendation ?? '?';
+      const score = result.match?.scoreOutOf5 ?? '?';
+      const rec = result.match?.recommendation ?? '?';
       const title = result.job?.title ?? '?';
       console.log(`[${done}/${jobIds.length}] ${score}/5 ${rec} — ${(title || '').slice(0,60)}`);
     } catch (err: any) {

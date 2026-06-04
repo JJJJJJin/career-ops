@@ -138,6 +138,17 @@ export const config = {
     reportsDir: resolvePath(process.env.REPORTS_DIR, 'reports'),
     templatesDir: path.join(REPO_ROOT, 'templates'),
     fontsDir: path.join(REPO_ROOT, 'fonts'),
+    // Offline queue for tracker writes when Postgres is unreachable.
+    trackerOutbox: resolvePath(process.env.TRACKER_OUTBOX, 'data/tracker-outbox.jsonl'),
+  },
+
+  // Shared Postgres job tracker (rpi). dedup-on-discovery + status-on-submit
+  // across machines. Local SQLite still holds the heavy pipeline data. When the
+  // URL is unset the tracker is a no-op; when set but unreachable, writes queue
+  // to the outbox and sync on the next successful connection.
+  tracker: {
+    databaseUrl: process.env.TRACKER_DATABASE_URL ?? process.env.DATABASE_URL ?? null,
+    connectTimeoutMs: parseInt10(process.env.TRACKER_CONNECT_TIMEOUT_MS, 4000),
   },
 
   scoring: {
