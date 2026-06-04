@@ -132,6 +132,9 @@ export type ApplicationRow = {
   applyResumePath: string | null;
   applyAnswers: ApplyAnswer[] | null;
   applyError: string | null;
+  /** Agent/human holistic verdict — recommended, not_recommended, or pending. */
+  agentVerdict: string | null;
+  agentVerdictReason: string | null;
   updatedAt: string;
 };
 

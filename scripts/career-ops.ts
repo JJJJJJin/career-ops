@@ -55,6 +55,7 @@ const COMMANDS: Record<string, () => Promise<{ runCli: (argv: string[]) => Promi
   'query-jobs': () => import('./cmd/query-jobs.js'),
   'show-job': () => import('./cmd/show-job.js'),
   'mark-job': () => import('./cmd/mark-job.js'),
+  'mark-verdict': () => import('./cmd/mark-verdict.js'),
   'job-stats': () => import('./cmd/job-stats.js'),
   'render-tracker': () => import('./cmd/render-tracker.js'),
   'tracker-sync': () => import('./cmd/tracker-sync.js'),

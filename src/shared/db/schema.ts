@@ -155,4 +155,7 @@ export const MIGRATIONS: Array<{ table: string; column: string; ddl: string }> =
   { table: 'applications', column: 'apply_resume_path',  ddl: `ALTER TABLE applications ADD COLUMN apply_resume_path TEXT` },
   { table: 'applications', column: 'apply_answers_json', ddl: `ALTER TABLE applications ADD COLUMN apply_answers_json TEXT` },
   { table: 'applications', column: 'apply_error',        ddl: `ALTER TABLE applications ADD COLUMN apply_error TEXT` },
+  // Agent verdict — human/agent holistic judgment beyond the technical match score.
+  { table: 'applications', column: 'agent_verdict',        ddl: `ALTER TABLE applications ADD COLUMN agent_verdict TEXT` },
+  { table: 'applications', column: 'agent_verdict_reason', ddl: `ALTER TABLE applications ADD COLUMN agent_verdict_reason TEXT` },
 ];

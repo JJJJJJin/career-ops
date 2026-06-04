@@ -65,6 +65,8 @@ type AppRow = {
   apply_resume_path: string | null;
   apply_answers_json: string | null;
   apply_error: string | null;
+  agent_verdict: string | null;
+  agent_verdict_reason: string | null;
   updated_at: string;
 };
 
@@ -138,6 +140,8 @@ function rowToApplication(row: AppRow): ApplicationRow {
     applyResumePath: row.apply_resume_path,
     applyAnswers: row.apply_answers_json ? (JSON.parse(row.apply_answers_json) as ApplyAnswer[]) : null,
     applyError: row.apply_error,
+    agentVerdict: row.agent_verdict ?? null,
+    agentVerdictReason: row.agent_verdict_reason ?? null,
     updatedAt: row.updated_at,
   };
 }
@@ -301,6 +305,8 @@ class DbStore {
     applyResumePath: string;
     applyAnswers: ApplyAnswer[];
     applyError: string;
+    agentVerdict: string;
+    agentVerdictReason: string;
   }>): void {
     this.ensureApplication(jobId);
     const sets: string[] = [];
@@ -328,6 +334,8 @@ class DbStore {
       ['applyResumePath', 'apply_resume_path', (v) => v],
       ['applyAnswers', 'apply_answers_json', (v) => (v ? JSON.stringify(v) : null)],
       ['applyError', 'apply_error', (v) => v],
+      ['agentVerdict', 'agent_verdict', (v) => v],
+      ['agentVerdictReason', 'agent_verdict_reason', (v) => v],
     ];
 
     for (const [key, col, mapVal] of map) {
