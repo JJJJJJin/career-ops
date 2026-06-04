@@ -146,8 +146,13 @@ export function checkHardConstraints(text: string, g: Grounding): ClaimViolation
   }
 
   // 3. Seniority/title: a seniority word not covered by any allowed title.
+  // "staff" is tricky — "staff engineer" is a real title but "3 staff" or
+  // "the staff" are about other people. Only flag it in title-like contexts.
   for (const s of SENIORITY_TOKENS) {
-    if (!new RegExp(`\\b${escRe(s)}\\b`).test(lower)) continue;
+    const re = s === 'staff'
+      ? new RegExp(`\\bstaff\\s+(?:engineer|developer|scientist|researcher|designer|architect|manager|level|role|position)\\b`, 'i')
+      : new RegExp(`\\b${escRe(s)}\\b`, 'i');
+    if (!re.test(text)) continue;
     const coveredByTitle = g.allowedTitles.some((t) => t.includes(s));
     if (!coveredByTitle) {
       v.push({ layer: 'hard', category: 'title', value: s, reason: 'seniority/title word not supported by any library title or the target role' });

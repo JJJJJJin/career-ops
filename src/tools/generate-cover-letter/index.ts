@@ -25,17 +25,26 @@ const log = createLogger('generate-cover-letter');
 
 const MAX_ATTEMPTS = 2;
 
-const SYSTEM_PROMPT = `You write SHORT cover letters (under 250 words, 3 body paragraphs). Tone: warm, confident, specific. You are given a FIXED set of approved facts about the candidate (their selected résumé bullets + summary). You may ONLY state things supported by those facts.
+const SYSTEM_PROMPT = `You write SHORT cover letters (under 250 words, 3 body paragraphs). Tone: direct, fact-forward, confident — write like you're talking to a peer, not begging for a job. You are given a FIXED set of approved facts about the candidate (their selected résumé bullets + summary). You may ONLY state things supported by those facts. Every claim must trace to a specific bullet.
 
-PARAGRAPH 1 — why this role: reference one concrete thing from the job (a product, problem, or team scope) and the candidate's relevant framing.
-PARAGRAPH 2 — strongest 1-2 fits: cite a specific project/role/skill drawn from the approved facts (no "experienced" hand-waving).
-PARAGRAPH 3 — close: one sentence on what excites them about the team, one asking for a conversation. No begging.
+VOICE (this is critical):
+- Open Para 1 with a concrete achievement, not a feeling. "I built X that does Y" hits harder than "I'm excited about Z." Use numbers wherever the facts give you one.
+- Never start with "I'm excited about..." or "I'm passionate about..." — it weakens the whole letter.
+- Lead with evidence: "You need A; I've built A in production. Here's the number."
+- Short sentences. No filler. Every word should carry weight.
+
+PARAGRAPH 1 — the "you do this, I've done this" paragraph: pull ONE specific thing from the job description and immediately connect it to the candidate's closest production achievement with real numbers or scope. This is the hook — make the reader think "this person has actually done the thing we're hiring for."
+
+PARAGRAPH 2 — deepen the fit: cite 1-2 additional projects or skills from the approved facts. Show range without listing. Connect each fact to why it matters for THIS role. No "experienced" hand-waving — every sentence anchored to a bullet.
+
+PARAGRAPH 3 — close: one sentence on what specifically about this company/role is interesting (based on what the JD reveals), one asking for a conversation. Confident, not desperate.
 
 HARD RULES (violations are rejected by an automated checker):
 - Do NOT state any number, metric, technology, job title, seniority level, or date that is not in the approved facts.
 - Do NOT inflate the internship to a senior/lead role. Use only the titles given.
 - Do NOT invent achievements, scope, employers, or skills. Paraphrase the approved facts; never add to them.
-- No clichés ("passionate self-starter", "results-driven"). Do not quote JD requirements verbatim.
+- No clichés ("passionate self-starter", "results-driven", "I'm excited about", "I'm thrilled"). No quoting JD requirements verbatim.
+- No generic enthusiasm. Enthusiasm is shown through specificity, not adjectives.
 
 Output strict JSON in the schema below.`;
 
@@ -166,30 +175,59 @@ ${approvedFacts}`;
 
     // ── The guardrail. Validate the prose against the grounding. ──
     const result = await validateProse(letter.bodyParagraphs.join('\n\n'), grounding);
+    const hardViolations = result.violations.filter((v) => v.layer === 'hard');
+    const softViolations = result.violations.filter((v) => v.layer === 'soft');
     lastLetter = letter;
     lastViolations = result.violations;
-    if (result.ok) {
+
+    // Hard violations (made-up numbers, fake tech, wrong seniority) → retry.
+    // Soft violations (\"I built X\" not precisely traceable) → accept with flag.
+    if (hardViolations.length === 0) {
       const markdown = renderMarkdown(letter);
       fs.mkdirSync(outputDir, { recursive: true });
       fs.writeFileSync(jsonPath, JSON.stringify(letter, null, 2), 'utf-8');
       fs.writeFileSync(mdPath, markdown, 'utf-8');
       if (fs.existsSync(reviewPath)) fs.rmSync(reviewPath);
-      db.updateApplicationFields(jobId, { coverLetterMd: markdown, outputDir, generatedAt: new Date().toISOString(), model: config.llm.model });
-      log.info({ jobId, attempt }, 'generate-cover-letter: complete (grounding passed)');
+      const note = softViolations.length
+        ? `cover-letter accepted (${softViolations.length} soft flag(s) — review advised)`
+        : null;
+      db.updateApplicationFields(jobId, { coverLetterMd: markdown, outputDir, generatedAt: new Date().toISOString(), model: config.llm.model, ...(note ? { notes: note } : {}) });
+      log.info({ jobId, attempt, hardViolations: 0, softViolations: softViolations.length }, 'generate-cover-letter: complete (hard grounding passed)');
       return { jobId, outputDir, jsonPath, mdPath, letter, markdown };
     }
-    log.warn({ jobId, attempt, violations: result.violations.length }, 'generate-cover-letter: grounding failed');
+    log.warn({ jobId, attempt, hardViolations: hardViolations.length, softViolations: softViolations.length }, 'generate-cover-letter: hard grounding failed');
   }
 
-  // Two attempts failed → review queue. Do NOT emit a clean letter or PDF.
+  // Two attempts done. Soft-only → accept with warnings. Hard violations → review.
   const letter = lastLetter as TailoredCoverLetter;
+  const hardViolations = lastViolations.filter((v: ClaimViolation) => v.layer === 'hard');
+  const softViolations = lastViolations.filter((v: ClaimViolation) => v.layer === 'soft');
+
+  if (hardViolations.length === 0) {
+    // Only soft violations after retries — accept and flag.
+    const markdown = renderMarkdown(letter);
+    fs.mkdirSync(outputDir, { recursive: true });
+    fs.writeFileSync(jsonPath, JSON.stringify(letter, null, 2), 'utf-8');
+    fs.writeFileSync(mdPath, markdown, 'utf-8');
+    if (fs.existsSync(reviewPath)) fs.rmSync(reviewPath);
+    const note = `cover-letter accepted after ${MAX_ATTEMPTS} attempts (${softViolations.length} soft flag(s) — review advised)`;
+    db.updateApplicationFields(jobId, { coverLetterMd: markdown, outputDir, generatedAt: new Date().toISOString(), model: config.llm.model, notes: note });
+    log.warn({ jobId, softViolations: softViolations.length }, 'generate-cover-letter: accepted with soft flags after retries');
+    return {
+      jobId, outputDir, jsonPath, mdPath, letter,
+      markdown, needsReview: true, violations: lastViolations, reviewPath: null,
+    };
+  }
+
+  // Hard violations remain → review queue. Do NOT emit a clean letter or PDF.
   const reviewMd = [
-    `# ⚠ COVER LETTER — NEEDS REVIEW (unsupported claims after ${MAX_ATTEMPTS} attempts)`,
+    `# ⚠ COVER LETTER — NEEDS REVIEW (hard violations after ${MAX_ATTEMPTS} attempts)`,
     `Job: ${job.title} @ ${job.company ?? ''}`,
     '',
-    `## Unsupported claims (fix or confirm before sending):`,
-    formatViolations(lastViolations),
+    `## Hard violations (MUST fix — fabricated numbers, tech, titles):`,
+    formatViolations(hardViolations),
     '',
+    softViolations.length ? `## Soft flags (review advised):\n${formatViolations(softViolations)}\n` : '',
     `## Draft (NOT validated — do not send as-is):`,
     '',
     renderMarkdown(letter),
