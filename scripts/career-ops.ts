@@ -15,6 +15,7 @@
 
 const COMMANDS: Record<string, () => Promise<{ runCli: (argv: string[]) => Promise<void> }>> = {
   // discovery & ingestion
+  'batch-extract': () => import('./cmd/batch-extract.js'),
   'seek-search': () => import('./cmd/seek-search.js'),
   'seek-extract': () => import('./cmd/seek-extract.js'),
   'linkedin-search': () => import('./cmd/linkedin-search.js'),
