@@ -25,26 +25,29 @@ const log = createLogger('generate-cover-letter');
 
 const MAX_ATTEMPTS = 2;
 
-const SYSTEM_PROMPT = `You write SHORT cover letters (under 250 words, 3 body paragraphs). Tone: direct, fact-forward, confident — write like you're talking to a peer, not begging for a job. You are given a FIXED set of approved facts about the candidate (their selected résumé bullets + summary). You may ONLY state things supported by those facts. Every claim must trace to a specific bullet.
+const SYSTEM_PROMPT = `You write courteous, professional cover letters (about 250-320 words, 4 body paragraphs) in the voice of a genuine job applicant. Tone: polite, warm, and confident — respectful of the reader, never blunt, demanding, or presumptuous. You sell the candidate's strengths by describing real projects they delivered and the QUANTIFIED advantage those projects gave a company, team, or organisation. You are given a FIXED set of approved facts about the candidate (their selected résumé bullets + summary). You may ONLY state things supported by those facts. Every claim must trace to a specific bullet.
 
 VOICE (this is critical):
-- Open Para 1 with a concrete achievement, not a feeling. "I built X that does Y" hits harder than "I'm excited about Z." Use numbers wherever the facts give you one.
-- Never start with "I'm excited about..." or "I'm passionate about..." — it weakens the whole letter.
-- Lead with evidence: "You need A; I've built A in production. Here's the number."
-- Short sentences. No filler. Every word should carry weight.
+- Write as an applicant courteously introducing themselves, NOT as a recruiter telling the employer what they need. NEVER address the reader with "You need someone who…" or "You're looking for…" or any line that tells the company what its problem is — it reads as presumptuous.
+- Persuade through evidence, not adjectives: name a concrete project, then the measurable result it produced for the organisation (hours saved, accuracy, throughput, scope). Let the numbers carry the confidence.
+- Be genuinely polite: a warm opening, and a closing that thanks the reader. Confidence comes from specifics, not from bluntness.
+- Vary sentence length naturally; read like a thoughtful person wrote it, not a bullet list.
 
-PARAGRAPH 1 — the "you do this, I've done this" paragraph: pull ONE specific thing from the job description and immediately connect it to the candidate's closest production achievement with real numbers or scope. This is the hook — make the reader think "this person has actually done the thing we're hiring for."
+PARAGRAPH 1 — courteous opening: state the role being applied for and briefly, warmly introduce who the candidate is (e.g. degree/background from the approved facts) and why this work genuinely fits them. Be inviting, not boastful, and avoid empty enthusiasm.
 
-PARAGRAPH 2 — deepen the fit: cite 1-2 additional projects or skills from the approved facts. Show range without listing. Connect each fact to why it matters for THIS role. No "experienced" hand-waving — every sentence anchored to a bullet.
+PARAGRAPH 2 — the closest-fit project: take ONE specific theme from the job description and connect it to the candidate's most relevant project, describing what they built and the quantified outcome or scope. This is the strongest evidence of fit.
 
-PARAGRAPH 3 — close: one sentence on what specifically about this company/role is interesting (based on what the JD reveals), one asking for a conversation. Confident, not desperate.
+PARAGRAPH 3 — a second proof point of measurable impact: cite another project or experience from the approved facts where the candidate's work gave a team/company/organisation a quantified advantage (e.g. person-hours saved, accuracy, volume handled). Connect it to why it matters for THIS role.
+
+PARAGRAPH 4 — gracious close: one sentence tying a genuine strength (e.g. communication, clarity, collaboration) to the role, then a polite invitation to talk and a sincere thank-you for considering the application.
 
 HARD RULES (violations are rejected by an automated checker):
 - Do NOT state any number, metric, technology, job title, seniority level, or date that is not in the approved facts.
 - Do NOT inflate the internship to a senior/lead role. Use only the titles given.
 - Do NOT invent achievements, scope, employers, or skills. Paraphrase the approved facts; never add to them.
-- No clichés ("passionate self-starter", "results-driven", "I'm excited about", "I'm thrilled"). No quoting JD requirements verbatim.
-- No generic enthusiasm. Enthusiasm is shown through specificity, not adjectives.
+- Do NOT claim a skill or technology the candidate lacks just because the JD asks for it; sell only real, supported strengths.
+- No clichés ("passionate self-starter", "results-driven", "I'm thrilled", "hit the ground running"). No quoting JD requirements verbatim.
+- Politeness is expressed through courtesy and specifics, never through generic enthusiasm adjectives.
 
 Output strict JSON in the schema below.`;
 
@@ -52,7 +55,7 @@ const SCHEMA_HINT = `{
   "date": string,
   "recipientBlock": string,
   "salutation": string,
-  "bodyParagraphs": [string, string, string],
+  "bodyParagraphs": [string, string, string, string],
   "closing": string
 }`;
 
@@ -69,6 +72,16 @@ function renderMarkdown(c: TailoredCoverLetter): string {
 
 function todayPretty(): string {
   return new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+/**
+ * Keep only the sign-off line ("Best regards,") from the model's closing.
+ * The model often appends the candidate name or a "[Your Name]" placeholder,
+ * but renderMarkdown already adds the real name — without this we'd duplicate it.
+ */
+function sanitizeClosing(raw: string | undefined): string {
+  const firstLine = (raw ?? '').split('\n').map((l) => l.trim()).find(Boolean);
+  return firstLine && firstLine.length > 0 ? firstLine : 'Best regards,';
 }
 
 /** Load this job's assembled résumé — the grounding source. Assemble if missing. */
@@ -169,7 +182,7 @@ ${approvedFacts}`;
       recipientBlock: tailored.recipientBlock ?? `Hiring Team\n${job.company ?? ''}`.trim(),
       salutation: tailored.salutation ?? 'Dear Hiring Team,',
       bodyParagraphs: (tailored.bodyParagraphs ?? []).slice(0, 4),
-      closing: tailored.closing ?? 'Kind regards,',
+      closing: sanitizeClosing(tailored.closing),
     };
     if (letter.bodyParagraphs.length === 0) throw new Error('generate-cover-letter: LLM returned no body paragraphs');
 
@@ -215,7 +228,7 @@ ${approvedFacts}`;
     log.warn({ jobId, softViolations: softViolations.length }, 'generate-cover-letter: accepted with soft flags after retries');
     return {
       jobId, outputDir, jsonPath, mdPath, letter,
-      markdown, needsReview: true, violations: lastViolations, reviewPath: null,
+      markdown, needsReview: true, violations: lastViolations, reviewPath: undefined,
     };
   }
 
