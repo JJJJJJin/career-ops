@@ -119,6 +119,12 @@ async function callOpenAiOnce<T>(target: ResolvedTarget, opts: CallJsonOptions):
     ? `${opts.cachePrefix}\n\n${opts.userPrompt}`
     : opts.userPrompt;
 
+  // gpt-5.x+ models require the word 'json' to appear in messages when
+  // using response_format: { type: 'json_object' }. Append to system prompt.
+  const systemWithJson = opts.systemPrompt.includes('json')
+    ? opts.systemPrompt
+    : `${opts.systemPrompt}\n\nRespond with a JSON object.`;
+
   const resp = await client.chat.completions.create({
     model: target.model,
     response_format: { type: 'json_object' },
@@ -126,7 +132,7 @@ async function callOpenAiOnce<T>(target: ResolvedTarget, opts: CallJsonOptions):
     // Use max_completion_tokens (newer API). max_tokens is deprecated on gpt-5.x+ models.
     max_completion_tokens: opts.maxTokens ?? 4096,
     messages: [
-      { role: 'system', content: opts.systemPrompt },
+      { role: 'system', content: systemWithJson },
       { role: 'user', content: userContent },
     ],
   });

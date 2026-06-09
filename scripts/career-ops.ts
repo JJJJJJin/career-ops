@@ -44,6 +44,11 @@ const COMMANDS: Record<string, () => Promise<{ runCli: (argv: string[]) => Promi
   'outreach-draft': () => import('./cmd/outreach-draft.js'),
   'gap-report': () => import('./cmd/gap-report.js'),
 
+  // self-contained gen (evaluate → generate → render)
+  'gen-resume': () => import('./cmd/gen-resume.js'),
+  'gen-cover-letter': () => import('./cmd/gen-cover-letter.js'),
+  'gen-brief': () => import('./cmd/gen-brief.js'),
+
   // rendering
   'render-resume-pdf': () => import('./cmd/render-resume-pdf.js'),
   'render-cover-letter-pdf': () => import('./cmd/render-cover-letter-pdf.js'),
@@ -79,7 +84,8 @@ const TOOL_GROUPS: Array<{ heading: string; tools: string[] }> = [
   { heading: 'Discovery & ingestion', tools: ['seek-search', 'seek-extract', 'linkedin-search', 'linkedin-extract', 'indeed-search', 'indeed-extract', 'builtin-search', 'builtin-extract', 'web-distill'] },
   { heading: 'Content library', tools: ['parse-library'] },
   { heading: 'Evaluation', tools: ['flag-eligibility', 'summarize-job', 'classify-jd', 'go-no-go', 'match-job', 'evaluate-job'] },
-  { heading: 'Generation', tools: ['assemble-resume', 'generate-cover-letter', 'generate-company-brief', 'outreach-draft', 'gap-report'] },
+  { heading: 'Generation (standalone)', tools: ['assemble-resume', 'generate-cover-letter', 'generate-company-brief', 'outreach-draft', 'gap-report'] },
+  { heading: 'Generation (end-to-end)', tools: ['gen-resume', 'gen-cover-letter', 'gen-brief'] },
   { heading: 'Rendering', tools: ['render-resume-pdf', 'render-cover-letter-pdf', 'render-company-brief-pdf'] },
   { heading: 'Delivery', tools: ['send-files'] },
   { heading: 'Tracking', tools: ['query-jobs', 'show-job', 'mark-job', 'job-stats', 'render-tracker', 'tracker-sync'] },
