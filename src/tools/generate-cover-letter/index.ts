@@ -76,10 +76,29 @@ function todayPretty(): string {
  * Keep only the sign-off line ("Best regards,") from the model's closing.
  * The model often appends the candidate name or a "[Your Name]" placeholder,
  * but renderMarkdown already adds the real name — without this we'd duplicate it.
+ * Also strips any trailing candidate name on the closing line itself.
  */
-function sanitizeClosing(raw: string | undefined): string {
+function sanitizeClosing(raw: string | undefined, candidateName: string): string {
   const firstLine = (raw ?? '').split('\n').map((l) => l.trim()).find(Boolean);
-  return firstLine && firstLine.length > 0 ? firstLine : 'Best regards,';
+  let closing = firstLine && firstLine.length > 0 ? firstLine : 'Best regards,';
+  // Strip candidate name if the model appended it to the closing line
+  // e.g. "Best regards, Jincheng Deng" → "Best regards,"
+  const nameSuffix = new RegExp(`\\s*${candidateName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'i');
+  closing = closing.replace(nameSuffix, '').trimEnd();
+  // Ensure it ends with a comma
+  if (!closing.endsWith(',')) closing += ',';
+  return closing;
+}
+
+/**
+ * Strip bracket placeholders ([Company Address], [City, State], [Country])
+ * that the LLM sometimes generates for the recipient block.
+ */
+function sanitizeRecipient(raw: string | undefined, company: string): string {
+  if (!raw || /\[.*?\]/.test(raw)) {
+    return `Hiring Team\n${company}`.trim();
+  }
+  return raw;
 }
 
 /** Load this job's assembled résumé — the grounding source. Assemble if missing. */
@@ -170,10 +189,10 @@ ${approvedFacts}`;
       portfolioDisplay: resume.contact.portfolioDisplay ?? resume.contact.portfolioUrl,
     },
     date: tailored.date ?? today,
-    recipientBlock: tailored.recipientBlock ?? `Hiring Team\n${job.company ?? ''}`.trim(),
+    recipientBlock: sanitizeRecipient(tailored.recipientBlock, job.company ?? 'Unknown'),
     salutation: tailored.salutation ?? 'Dear Hiring Team,',
     bodyParagraphs: (tailored.bodyParagraphs ?? []).slice(0, 3),
-    closing: sanitizeClosing(tailored.closing),
+    closing: sanitizeClosing(tailored.closing, resume.name),
   };
   if (letter.bodyParagraphs.length === 0) throw new Error('generate-cover-letter: LLM returned no body paragraphs');
 
