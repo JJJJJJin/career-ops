@@ -80,6 +80,10 @@ const PATTERN_GROUPS: PatternGroup[] = [
       String.raw`(?:minimum|at\s+least|over|more\s+than)\s+(?:of\s+)?\b(?:[5-9]|1[0-9]|20)\+?\s*(?:to\s+)?(?:years|yrs)\b`,
       String.raw`\b(?:[5-9]|1[0-9]|20)\s*\+\s*(?:years|yrs)\b`,
       String.raw`\b(?:[6-9]|1[0-9]|20)\s*(?:years|yrs)\s+(?:of\s+)?experience\b`,
+      // Plain "5 years (of) experience" — the line above starts at 6 to dodge a
+      // range's upper bound; the lookbehind here lets a true minimum of 5 match
+      // while still skipping "3-5 years experience" (where 5 is the upper bound).
+      String.raw`(?<!\d\s*[-–—]\s*)\b5\s*(?:years|yrs)\s+(?:of\s+)?experience\b`,
       // "5-7 years of experience" / "5 – 8 years experience"
       String.raw`\b(?:[5-9]|1[0-9]|20)\s*[-–—]\s*(?:[6-9]|1[0-9]|20)\s*(?:years|yrs)\b`,
       // "experience: 5+ years" / "experience — 5+ years"
@@ -95,6 +99,10 @@ const PATTERN_GROUPS: PatternGroup[] = [
       String.raw`\bstaff\s+(?:software|backend|frontend|full.?stack|devops|platform|cloud|data|ai|machine\s+learning)\s+(?:engineer|developer|architect)\b`,
       String.raw`\bprincipal\s+(?:software|backend|frontend|full.?stack|devops|platform|cloud|data|ai|machine\s+learning)\s+(?:engineer|developer|architect)\b`,
       String.raw`\blead\s+(?:software|backend|frontend|full.?stack|devops|platform|cloud|data|ai|machine\s+learning)\s+(?:engineer|developer|architect)\b`,
+      // "senior-level", plus role nouns the lists above omit (programmer /
+      // consultant / specialist / analyst) so a stated senior role still trips.
+      String.raw`\bsenior[-\s]level\b`,
+      String.raw`\bsenior\s+(?:\w+\s+){0,2}(?:programmer|consultant|specialist|analyst)\b`,
       String.raw`\bhead\s+of\s+(?:engineering|software|technology|ai|data)\b`,
     ],
   },
@@ -170,7 +178,9 @@ export function flagEligibility(opts: FlagOptions): FlagResult {
   }
   const job: Job | null = db.getJob(opts.jobId);
   if (!job) throw new Error(`flag-eligibility: job ${opts.jobId} not in DB. Run seek-extract first.`);
-  const flags = scanEligibility(job.description);
+  // Scan the title too — a "Senior … Engineer" level signal usually lives in the
+  // title, not the body, and would otherwise be missed.
+  const flags = scanEligibility(`${job.title}\n${job.description}`);
   if (!opts.noStore) {
     db.setEligibilityFlags(job.jobId, flags);
     log.debug({ jobId: job.jobId, flags: flags.map((f) => f.flag) }, 'flag-eligibility: persisted');

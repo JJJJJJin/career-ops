@@ -13,6 +13,8 @@ const log = createLogger('match-job');
 
 const SYSTEM_PROMPT = `You evaluate how well a candidate matches a job. Be honest — surface real gaps, not just praise. Cite SPECIFIC evidence from the candidate profile (a project name, role, or skill). Never invent evidence. Output strict JSON.
 
+CRITICAL — strengths vs gaps are MUTUALLY EXCLUSIVE. A requirement is a STRENGTH only if the candidate profile contains concrete evidence for it; otherwise it is a GAP. NEVER list the same requirement in both. If you are unsure, it is a GAP, not a strength. Do not restate a job requirement as a strength unless the profile actually evidences it — an unmet must-have is a gap and MUST lower the score per the rubric.
+
 Scoring rubric (0-100):
 - 85-100: strong fit. Most must-haves directly evidenced. Senior-or-equal level. Domain match.
 - 70-84:  good fit. All hard must-haves met; missing 1-2 nice-to-haves; transferable skills cover the rest.
@@ -33,6 +35,35 @@ function deriveRecommendation(scoreOutOf5: number): MatchAnalysis['recommendatio
   if (scoreOutOf5 >= config.scoring.strongThreshold) return 'STRONG';
   if (scoreOutOf5 >= config.scoring.borderlineThreshold) return 'BORDERLINE';
   return 'SKIP';
+}
+
+function normRequirement(s: string): string {
+  return (s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/**
+ * Safety net for weaker models that list the same requirement as BOTH a
+ * strength and a gap (a self-contradiction that inflates the apparent fit).
+ * The gap wins: any strength whose requirement matches a gap requirement is
+ * dropped. Matching is by normalized equality, or substring containment when
+ * the shorter string is long enough to be unambiguous.
+ */
+function pruneContradictedStrengths(
+  strengths: NonNullable<MatchAnalysis['strengths']>,
+  gaps: NonNullable<MatchAnalysis['gaps']>,
+): { strengths: MatchAnalysis['strengths']; dropped: string[] } {
+  const gapKeys = gaps.map((g) => normRequirement(g.requirement)).filter(Boolean);
+  const dropped: string[] = [];
+  const kept = strengths.filter((s) => {
+    const k = normRequirement(s.requirement);
+    if (!k) return true;
+    const clash = gapKeys.some(
+      (gk) => gk === k || (k.length >= 15 && gk.includes(k)) || (gk.length >= 15 && k.includes(gk)),
+    );
+    if (clash) dropped.push(s.requirement);
+    return !clash;
+  });
+  return { strengths: kept, dropped };
 }
 
 export type MatchOptions = {
@@ -76,13 +107,19 @@ ${JSON.stringify(profile, null, 2)}`,
   const scoreOutOf5 = Math.round((fitScore / 20) * 10) / 10;
   const recommendation = deriveRecommendation(scoreOutOf5);
 
+  const gaps = out.gaps ?? [];
+  const { strengths, dropped } = pruneContradictedStrengths(out.strengths ?? [], gaps);
+  if (dropped.length) {
+    log.warn({ jobId, dropped }, 'match-job: pruned strengths that contradicted gaps (model self-contradiction)');
+  }
+
   const match: MatchAnalysis = {
     fitScore,
     scoreOutOf5,
     recommendation,
     oneLineFit: out.oneLineFit ?? '',
-    strengths: out.strengths ?? [],
-    gaps: out.gaps ?? [],
+    strengths,
+    gaps,
     transferableSkills: out.transferableSkills ?? [],
     keywordsToEmphasize: out.keywordsToEmphasize ?? [],
   };
