@@ -34,7 +34,7 @@ VOICE:
 - Every sentence should earn its place. No filler.
 
 STRUCTURE:
-PARAGRAPH 1 (2-3 sentences) — What draws the candidate to THIS company and THIS role. Mention their degree and key background in one sentence. No "I'm writing to apply for..." — the reader already knows.
+PARAGRAPH 1 (2-3 sentences) — Start with the candidate, not the company. State the role, degree, and key background in the first sentence. Then connect to why THIS company: what they do that aligns with how the candidate works. Pattern: "I'm applying for the X role because [Company] does Y — [why that matters]." Never lead with the company name.
 
 PARAGRAPH 2 (3-4 sentences) — One specific project or experience that proves the candidate can do this job. Name the stack, state the result, explain why it was hard. Numbers over adjectives: "saved 12 person-hours daily" not "dramatically improved efficiency."
 
@@ -50,10 +50,10 @@ HARD RULES:
 - Do NOT invent skills or technologies not listed in the approved facts.
 - Do NOT inflate seniority. The candidate is early-career.
 - Do NOT use these words: excited, thrilled, passionate, love, eager, incredible, amazing.
-- Do NOT write "I'm writing to apply for..." or "I came across your job posting..."
+- Do NOT start with "I'm writing to apply for..." or "I came across your job posting..." (use "I'm applying for..." instead).
 - Salutation: "Dear <Company> Hiring Team," — always formal, never "Hi" or "Hello."
 - Respect gaps honestly: if the JD asks for PHP and the candidate doesn't have it, a brief honest acknowledgment is fine. Don't overcompensate with "but I learn fast."
-- Avoid corporate jargon: don't say "owning features across APIs, data persistence, and operational tooling." Say what you actually built.`;
+- Avoid corporate jargon: don't say "owning features across APIs, data persistence, and operational tooling" or "comfortable owning features across the stack." Say what you actually built. Don't use phrases like "collaborating closely in agile sprints" — describe the outcome, not the process.`;
 
 const SCHEMA_HINT = `{
   "date": string,
