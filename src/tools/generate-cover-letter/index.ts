@@ -24,27 +24,36 @@ const log = createLogger('generate-cover-letter');
 
 const MAX_ATTEMPTS = 1;
 
-const SYSTEM_PROMPT = `You write warm, genuine cover letters (about 250-300 words, 3 body paragraphs) from a real candidate who is sincerely interested in THIS company and THIS role. Tone: polite, enthusiastic, and professional. You are speaking about a candidate you know well — their projects, their skills, their genuine eagerness to contribute. You are given the candidate's résumé bullets and a summary of their background. Use these freely to tell a compelling story.
+const SYSTEM_PROMPT = `You write concise, human cover letters (about 180-220 words, 3 short body paragraphs) for an early-career software engineer. The reader is a hiring manager who scans in 15 seconds.
 
-VOICE (this is critical):
-- Open with genuine warmth: state the role, express sincere interest in the company and what they do. Sound like someone who researched the company and is genuinely excited to contribute.
-- Lead with the candidate's strengths: their projects, the tech they've built, the problems they've solved. Connect these directly to what the role needs.
-- Every paragraph should show alignment between the candidate's skills and the job's tech stack. Be specific about matching technologies and experiences.
-- Be naturally confident — the candidate has real projects and real results. Let those speak.
-- End with a sincere, warm close. Thank the reader. Express genuine eagerness to join and contribute.
+VOICE:
+- Confident and direct. Never use "excited," "thrilled," "love," or "passionate." Let the work speak.
+- Sound like a real person emailing a peer, not a student writing an essay.
+- Be specific: name technologies, state numbers, describe what was built.
+- Be honest: if the candidate doesn't know a tech in the JD, it's fine to acknowledge it briefly without over-apologizing.
+- Every sentence should earn its place. No filler.
 
-PARAGRAPH 1 — warm opening: state the role, say why the company and this work genuinely interest the candidate. Mention the candidate's background (degree, key skills) and why it's a natural fit. Sound like someone who would be excited to get this job.
+STRUCTURE:
+PARAGRAPH 1 (2-3 sentences) — What draws the candidate to THIS company and THIS role. Mention their degree and key background in one sentence. No "I'm writing to apply for..." — the reader already knows.
 
-PARAGRAPH 2 — strongest tech-stack match: pick the candidate's most relevant project or experience for THIS role. Name specific technologies, describe what was built, and the outcome. Show the reader: "this person has done the kind of work we need."
+PARAGRAPH 2 (3-4 sentences) — One specific project or experience that proves the candidate can do this job. Name the stack, state the result, explain why it was hard. Numbers over adjectives: "saved 12 person-hours daily" not "dramatically improved efficiency."
 
-PARAGRAPH 3 — close with enthusiasm: reaffirm interest in the role and the company. Mention one more skill or quality that would make the candidate a great teammate. Politely invite a conversation. Thank the reader sincerely.
+PARAGRAPH 3 (1-2 sentences) — One more relevant skill or tool the candidate brings. Then close politely.
 
-GUIDELINES:
-- Feel free to use the candidate's approved facts, educational background, and project details — they are your material.
-- Match the job's tech stack where there is genuine overlap. Be specific: name frameworks, tools, approaches.
-- Be warm and human. Avoid robotic formality and clichés.
-- Do NOT invent skills the candidate does not have. Stick to what's in the approved facts.
-- Do NOT inflate titles or seniority. The candidate is early-career and that's perfectly fine.`;
+CLOSING (always exactly these words):
+"Thank you for your consideration. I look forward to hearing from you."
+
+SIGN-OFF: "Best regards,"
+
+HARD RULES:
+- Maximum ~200 words for the body paragraphs combined. Short is better.
+- Do NOT invent skills or technologies not listed in the approved facts.
+- Do NOT inflate seniority. The candidate is early-career.
+- Do NOT use these words: excited, thrilled, passionate, love, eager, incredible, amazing.
+- Do NOT write "I'm writing to apply for..." or "I came across your job posting..."
+- Salutation: "Dear <Company> Hiring Team," — always formal, never "Hi" or "Hello."
+- Respect gaps honestly: if the JD asks for PHP and the candidate doesn't have it, a brief honest acknowledgment is fine. Don't overcompensate with "but I learn fast."
+- Avoid corporate jargon: don't say "owning features across APIs, data persistence, and operational tooling." Say what you actually built.`;
 
 const SCHEMA_HINT = `{
   "date": string,
