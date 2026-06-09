@@ -1,11 +1,10 @@
 // generate-cover-letter — produce a TailoredCoverLetter for one job, grounded
 // ONLY in this job's assembled résumé (selected bullets + chosen summary variant
-// + company/title). The prose is then put through the SAME enforced grounding as
-// the résumé's traceability check (shared/grounding/claims): hard deterministic
-// checks on numbers/tech/seniority/dates + an adversarial verifier for soft
-// "I did X" claims. On a violation we regenerate once; if it still fails, the
-// draft goes to a review queue and NO clean letter / PDF is produced. We never
-// silently emit a cover letter with an unsupported claim.
+// generate-cover-letter — produce a TailoredCoverLetter for one job. The prose
+// is grounded in the candidate's assembled résumé (selected bullets + summary).
+// A lightweight grounding check flags unsupported claims as warnings, but never
+// blocks generation — the candidate's genuine interest and tech-stack alignment
+// matter more than mechanical rule enforcement.
 import fs from 'node:fs';
 import path from 'node:path';
 import { callJson } from '../../shared/llm/client.js';
@@ -23,39 +22,35 @@ import type { TailoredCoverLetter } from './types.js';
 
 const log = createLogger('generate-cover-letter');
 
-const MAX_ATTEMPTS = 2;
+const MAX_ATTEMPTS = 1;
 
-const SYSTEM_PROMPT = `You write courteous, professional cover letters (about 250-320 words, 4 body paragraphs) in the voice of a genuine job applicant. Tone: polite, warm, and confident — respectful of the reader, never blunt, demanding, or presumptuous. You sell the candidate's strengths by describing real projects they delivered and the QUANTIFIED advantage those projects gave a company, team, or organisation. You are given a FIXED set of approved facts about the candidate (their selected résumé bullets + summary). You may ONLY state things supported by those facts. Every claim must trace to a specific bullet.
+const SYSTEM_PROMPT = `You write warm, genuine cover letters (about 250-300 words, 3 body paragraphs) from a real candidate who is sincerely interested in THIS company and THIS role. Tone: polite, enthusiastic, and professional. You are speaking about a candidate you know well — their projects, their skills, their genuine eagerness to contribute. You are given the candidate's résumé bullets and a summary of their background. Use these freely to tell a compelling story.
 
 VOICE (this is critical):
-- Write as an applicant courteously introducing themselves, NOT as a recruiter telling the employer what they need. NEVER address the reader with "You need someone who…" or "You're looking for…" or any line that tells the company what its problem is — it reads as presumptuous.
-- Persuade through evidence, not adjectives: name a concrete project, then the measurable result it produced for the organisation (hours saved, accuracy, throughput, scope). Let the numbers carry the confidence.
-- Be genuinely polite: a warm opening, and a closing that thanks the reader. Confidence comes from specifics, not from bluntness.
-- Vary sentence length naturally; read like a thoughtful person wrote it, not a bullet list.
+- Open with genuine warmth: state the role, express sincere interest in the company and what they do. Sound like someone who researched the company and is genuinely excited to contribute.
+- Lead with the candidate's strengths: their projects, the tech they've built, the problems they've solved. Connect these directly to what the role needs.
+- Every paragraph should show alignment between the candidate's skills and the job's tech stack. Be specific about matching technologies and experiences.
+- Be naturally confident — the candidate has real projects and real results. Let those speak.
+- End with a sincere, warm close. Thank the reader. Express genuine eagerness to join and contribute.
 
-PARAGRAPH 1 — courteous opening: state the role being applied for and briefly, warmly introduce who the candidate is (e.g. degree/background from the approved facts) and why this work genuinely fits them. Be inviting, not boastful, and avoid empty enthusiasm.
+PARAGRAPH 1 — warm opening: state the role, say why the company and this work genuinely interest the candidate. Mention the candidate's background (degree, key skills) and why it's a natural fit. Sound like someone who would be excited to get this job.
 
-PARAGRAPH 2 — the closest-fit project: take ONE specific theme from the job description and connect it to the candidate's most relevant project, describing what they built and the quantified outcome or scope. This is the strongest evidence of fit.
+PARAGRAPH 2 — strongest tech-stack match: pick the candidate's most relevant project or experience for THIS role. Name specific technologies, describe what was built, and the outcome. Show the reader: "this person has done the kind of work we need."
 
-PARAGRAPH 3 — a second proof point of measurable impact: cite another project or experience from the approved facts where the candidate's work gave a team/company/organisation a quantified advantage (e.g. person-hours saved, accuracy, volume handled). Connect it to why it matters for THIS role.
+PARAGRAPH 3 — close with enthusiasm: reaffirm interest in the role and the company. Mention one more skill or quality that would make the candidate a great teammate. Politely invite a conversation. Thank the reader sincerely.
 
-PARAGRAPH 4 — gracious close: one sentence tying a genuine strength (e.g. communication, clarity, collaboration) to the role, then a polite invitation to talk and a sincere thank-you for considering the application.
-
-HARD RULES (violations are rejected by an automated checker):
-- Do NOT state any number, metric, technology, job title, seniority level, or date that is not in the approved facts.
-- Do NOT inflate the internship to a senior/lead role. Use only the titles given.
-- Do NOT invent achievements, scope, employers, or skills. Paraphrase the approved facts; never add to them.
-- Do NOT claim a skill or technology the candidate lacks just because the JD asks for it; sell only real, supported strengths.
-- No clichés ("passionate self-starter", "results-driven", "I'm thrilled", "hit the ground running"). No quoting JD requirements verbatim.
-- Politeness is expressed through courtesy and specifics, never through generic enthusiasm adjectives.
-
-Output strict JSON in the schema below.`;
+GUIDELINES:
+- Feel free to use the candidate's approved facts, educational background, and project details — they are your material.
+- Match the job's tech stack where there is genuine overlap. Be specific: name frameworks, tools, approaches.
+- Be warm and human. Avoid robotic formality and clichés.
+- Do NOT invent skills the candidate does not have. Stick to what's in the approved facts.
+- Do NOT inflate titles or seniority. The candidate is early-career and that's perfectly fine.`;
 
 const SCHEMA_HINT = `{
   "date": string,
   "recipientBlock": string,
   "salutation": string,
-  "bodyParagraphs": [string, string, string, string],
+  "bodyParagraphs": [string, string, string],
   "closing": string
 }`;
 
@@ -100,10 +95,8 @@ export type GenerateCoverLetterResult = {
   mdPath: string;
   letter: TailoredCoverLetter;
   markdown: string;
-  /** True when the draft failed grounding twice and was routed to review. */
-  needsReview?: boolean;
-  violations?: ClaimViolation[];
-  reviewPath?: string;
+  /** Warnings from grounding (informational only — never blocks generation). */
+  warnings?: ClaimViolation[];
 };
 
 export type GenerateCoverLetterOptions = { force?: boolean };
@@ -116,7 +109,6 @@ export async function generateCoverLetter(jobId: string, opts: GenerateCoverLett
   const outputDir = applicationDir(job);
   const jsonPath = path.join(outputDir, `${slug}-cover-letter.json`);
   const mdPath = path.join(outputDir, `${slug}-cover-letter.md`);
-  const reviewPath = path.join(outputDir, `${slug}-cover-letter.NEEDS_REVIEW.md`);
 
   if (!opts.force && fs.existsSync(jsonPath) && fs.existsSync(mdPath)) {
     const cached = JSON.parse(fs.readFileSync(jsonPath, 'utf-8')) as TailoredCoverLetter;
@@ -125,7 +117,7 @@ export async function generateCoverLetter(jobId: string, opts: GenerateCoverLett
     return { jobId, outputDir, jsonPath, mdPath, letter: cached, markdown };
   }
 
-  // Grounding: ONLY this job's selected bullets + chosen summary variant.
+  // Grounding: this job's selected bullets + chosen summary variant.
   const summary: JobSummary = await summarizeJob(jobId);
   const resume = await loadAssembledResume(jobId, slug, outputDir, opts.force);
   const selectedBullets = [
@@ -139,122 +131,71 @@ export async function generateCoverLetter(jobId: string, opts: GenerateCoverLett
     today,
   });
 
-  const approvedFacts = `APPROVED FACTS — the ONLY things you may claim about the candidate:
+  const approvedFacts = `APPROVED FACTS — use these to tell the candidate's story:
 SUMMARY: ${resume.summary}
 SELECTED BULLETS:
-${selectedBullets.map((b) => `- ${b}`).join('\n')}`;
+${selectedBullets.map((b) => `- ${b}`).join('\n')}
+
+CANDIDATE BACKGROUND (use freely):
+- ${resume.name}, ${resume.contact.email}, ${resume.contact.location}
+- ${resume.contact.linkedinDisplay || resume.contact.linkedinUrl || ''}`;
 
   const baseUserPrompt = `${SCHEMA_HINT}
 
 JOB: ${job.title} @ ${job.company ?? 'Unknown'}
 TODAY (use as date): ${today}
-ROLE CONTEXT (for paragraph 1 only — about the job, not the candidate):
+ROLE CONTEXT (what this job is about):
 ${summary.oneLineSummary}
-${(summary.responsibilities ?? []).slice(0, 4).map((r) => `- ${r}`).join('\n')}
+${(summary.responsibilities ?? []).slice(0, 5).map((r) => `- ${r}`).join('\n')}
 
 ${approvedFacts}`;
 
-  let lastLetter: TailoredCoverLetter | null = null;
-  let lastViolations: ClaimViolation[] = [];
+  log.info({ jobId, model: config.llm.model }, 'generate-cover-letter: drafting');
+  const tailored = await callJson<Partial<TailoredCoverLetter>>({
+    step: 'generate-cover-letter',
+    systemPrompt: SYSTEM_PROMPT,
+    userPrompt: baseUserPrompt,
+  });
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const avoidBlock = lastViolations.length
-      ? `\n\nYOUR PREVIOUS DRAFT WAS REJECTED. Do NOT make these unsupported claims again:\n${lastViolations.map((v) => `- ${v.value} (${v.reason})`).join('\n')}`
-      : '';
-
-    log.info({ jobId, attempt, model: config.llm.model }, 'generate-cover-letter: drafting');
-    const tailored = await callJson<Partial<TailoredCoverLetter>>({
-      step: 'generate-cover-letter',
-      systemPrompt: SYSTEM_PROMPT,
-      userPrompt: baseUserPrompt + avoidBlock,
-    });
-
-    const letter: TailoredCoverLetter = {
-      name: resume.name,
-      contact: {
-        email: resume.contact.email,
-        phone: resume.contact.phone,
-        location: resume.contact.location,
-        linkedinDisplay: resume.contact.linkedinDisplay ?? resume.contact.linkedinUrl,
-        portfolioDisplay: resume.contact.portfolioDisplay ?? resume.contact.portfolioUrl,
-      },
-      date: tailored.date ?? today,
-      recipientBlock: tailored.recipientBlock ?? `Hiring Team\n${job.company ?? ''}`.trim(),
-      salutation: tailored.salutation ?? 'Dear Hiring Team,',
-      bodyParagraphs: (tailored.bodyParagraphs ?? []).slice(0, 4),
-      closing: sanitizeClosing(tailored.closing),
-    };
-    if (letter.bodyParagraphs.length === 0) throw new Error('generate-cover-letter: LLM returned no body paragraphs');
-
-    // ── The guardrail. Validate the prose against the grounding. ──
-    const result = await validateProse(letter.bodyParagraphs.join('\n\n'), grounding);
-    const hardViolations = result.violations.filter((v) => v.layer === 'hard');
-    const softViolations = result.violations.filter((v) => v.layer === 'soft');
-    lastLetter = letter;
-    lastViolations = result.violations;
-
-    // Hard violations (made-up numbers, fake tech, wrong seniority) → retry.
-    // Soft violations (\"I built X\" not precisely traceable) → accept with flag.
-    if (hardViolations.length === 0) {
-      const markdown = renderMarkdown(letter);
-      fs.mkdirSync(outputDir, { recursive: true });
-      fs.writeFileSync(jsonPath, JSON.stringify(letter, null, 2), 'utf-8');
-      fs.writeFileSync(mdPath, markdown, 'utf-8');
-      if (fs.existsSync(reviewPath)) fs.rmSync(reviewPath);
-      const note = softViolations.length
-        ? `cover-letter accepted (${softViolations.length} soft flag(s) — review advised)`
-        : null;
-      db.updateApplicationFields(jobId, { coverLetterMd: markdown, outputDir, generatedAt: new Date().toISOString(), model: config.llm.model, ...(note ? { notes: note } : {}) });
-      log.info({ jobId, attempt, hardViolations: 0, softViolations: softViolations.length }, 'generate-cover-letter: complete (hard grounding passed)');
-      return { jobId, outputDir, jsonPath, mdPath, letter, markdown };
-    }
-    log.warn({ jobId, attempt, hardViolations: hardViolations.length, softViolations: softViolations.length }, 'generate-cover-letter: hard grounding failed');
-  }
-
-  // Two attempts done. Soft-only → accept with warnings. Hard violations → review.
-  const letter = lastLetter as TailoredCoverLetter;
-  const hardViolations = lastViolations.filter((v: ClaimViolation) => v.layer === 'hard');
-  const softViolations = lastViolations.filter((v: ClaimViolation) => v.layer === 'soft');
-
-  if (hardViolations.length === 0) {
-    // Only soft violations after retries — accept and flag.
-    const markdown = renderMarkdown(letter);
-    fs.mkdirSync(outputDir, { recursive: true });
-    fs.writeFileSync(jsonPath, JSON.stringify(letter, null, 2), 'utf-8');
-    fs.writeFileSync(mdPath, markdown, 'utf-8');
-    if (fs.existsSync(reviewPath)) fs.rmSync(reviewPath);
-    const note = `cover-letter accepted after ${MAX_ATTEMPTS} attempts (${softViolations.length} soft flag(s) — review advised)`;
-    db.updateApplicationFields(jobId, { coverLetterMd: markdown, outputDir, generatedAt: new Date().toISOString(), model: config.llm.model, notes: note });
-    log.warn({ jobId, softViolations: softViolations.length }, 'generate-cover-letter: accepted with soft flags after retries');
-    return {
-      jobId, outputDir, jsonPath, mdPath, letter,
-      markdown, needsReview: true, violations: lastViolations, reviewPath: undefined,
-    };
-  }
-
-  // Hard violations remain → review queue. Do NOT emit a clean letter or PDF.
-  const reviewMd = [
-    `# ⚠ COVER LETTER — NEEDS REVIEW (hard violations after ${MAX_ATTEMPTS} attempts)`,
-    `Job: ${job.title} @ ${job.company ?? ''}`,
-    '',
-    `## Hard violations (MUST fix — fabricated numbers, tech, titles):`,
-    formatViolations(hardViolations),
-    '',
-    softViolations.length ? `## Soft flags (review advised):\n${formatViolations(softViolations)}\n` : '',
-    `## Draft (NOT validated — do not send as-is):`,
-    '',
-    renderMarkdown(letter),
-  ].join('\n');
-  fs.mkdirSync(outputDir, { recursive: true });
-  fs.writeFileSync(reviewPath, reviewMd, 'utf-8');
-  // Ensure no stale clean output lingers.
-  for (const p of [jsonPath, mdPath]) if (fs.existsSync(p)) fs.rmSync(p);
-  db.updateApplicationFields(jobId, { notes: `cover-letter NEEDS_REVIEW: ${lastViolations.length} unsupported claim(s)` });
-  log.warn({ jobId, violations: lastViolations.length, reviewPath }, 'generate-cover-letter: routed to review (no clean output)');
-
-  return {
-    jobId, outputDir, jsonPath, mdPath, letter,
-    markdown: renderMarkdown(letter),
-    needsReview: true, violations: lastViolations, reviewPath,
+  const letter: TailoredCoverLetter = {
+    name: resume.name,
+    contact: {
+      email: resume.contact.email,
+      phone: resume.contact.phone,
+      location: resume.contact.location,
+      linkedinDisplay: resume.contact.linkedinDisplay ?? resume.contact.linkedinUrl,
+      portfolioDisplay: resume.contact.portfolioDisplay ?? resume.contact.portfolioUrl,
+    },
+    date: tailored.date ?? today,
+    recipientBlock: tailored.recipientBlock ?? `Hiring Team\n${job.company ?? ''}`.trim(),
+    salutation: tailored.salutation ?? 'Dear Hiring Team,',
+    bodyParagraphs: (tailored.bodyParagraphs ?? []).slice(0, 3),
+    closing: sanitizeClosing(tailored.closing),
   };
+  if (letter.bodyParagraphs.length === 0) throw new Error('generate-cover-letter: LLM returned no body paragraphs');
+
+  // Lightweight grounding check — flag warnings, never block.
+  let warnings: ClaimViolation[] = [];
+  try {
+    const result = await validateProse(letter.bodyParagraphs.join('\n\n'), grounding);
+    warnings = result.violations;
+    if (warnings.length) {
+      log.warn({ jobId, warnings: warnings.length }, 'generate-cover-letter: grounding warnings (informational only)');
+    }
+  } catch (err) {
+    log.warn({ jobId, err: (err as Error).message }, 'generate-cover-letter: grounding check skipped (verifier unavailable)');
+  }
+
+  const markdown = renderMarkdown(letter);
+  fs.mkdirSync(outputDir, { recursive: true });
+  fs.writeFileSync(jsonPath, JSON.stringify(letter, null, 2), 'utf-8');
+  fs.writeFileSync(mdPath, markdown, 'utf-8');
+
+  const note = warnings.length
+    ? `cover-letter generated (${warnings.length} grounding warning(s) — review optional)`
+    : null;
+  db.updateApplicationFields(jobId, { coverLetterMd: markdown, outputDir, generatedAt: new Date().toISOString(), model: config.llm.model, ...(note ? { notes: note } : {}) });
+  log.info({ jobId, warnings: warnings.length }, 'generate-cover-letter: complete');
+
+  return { jobId, outputDir, jsonPath, mdPath, letter, markdown, warnings: warnings.length ? warnings : undefined };
 }

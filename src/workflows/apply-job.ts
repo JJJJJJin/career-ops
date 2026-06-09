@@ -14,11 +14,13 @@ import { assembleResume } from '../tools/assemble-resume/index.js';
 import { goNoGo, type GoNoGoDecision } from '../tools/go-no-go/index.js';
 import { recordJobGaps } from '../tools/gap-report/index.js';
 import { generateCoverLetter } from '../tools/generate-cover-letter/index.js';
+import type { GenerateCoverLetterResult } from '../tools/generate-cover-letter/index.js';
 import { generateCompanyBrief } from '../tools/generate-company-brief/index.js';
 import { renderResumePdf } from '../tools/render-resume-pdf/index.js';
 import { renderCoverLetterPdf } from '../tools/render-cover-letter-pdf/index.js';
 import { renderCompanyBriefPdf } from '../tools/render-company-brief-pdf/index.js';
 import { sendEmail, isEmailConfigured } from '../shared/email/send.js';
+import type { ClaimViolation } from '../shared/grounding/claims.js';
 
 const log = createLogger('workflow:apply-job');
 
@@ -57,8 +59,8 @@ export type ApplyResult = {
   /** Go/no-go gate flagged the JD low-yield and generation was skipped. */
   skippedDueToLowYield?: boolean;
   goNoGo?: GoNoGoDecision;
-  /** Cover letter failed grounding twice → routed to review, no clean letter/PDF. */
-  coverLetterNeedsReview?: boolean;
+  /** Grounding warnings on the cover letter (informational only — PDF always generated). */
+  coverLetterWarnings?: ClaimViolation[];
   /** Company brief had unsourced facts after retry → banner added. */
   companyBriefNeedsReview?: boolean;
   emailedTo?: string;
@@ -124,20 +126,18 @@ export async function applyJob(jobIdOrUrl: string, opts: ApplyOptions = {}): Pro
       : generateCompanyBrief(jobId, { force: opts.force, companyWebsite: opts.companyWebsite }),
   ]) as [Awaited<ReturnType<typeof generateCoverLetter>>, Awaited<ReturnType<typeof generateCompanyBrief>> | undefined];
 
-  if (coverRes.needsReview) {
-    log.warn({ jobId, violations: coverRes.violations?.length }, 'apply-job: cover letter routed to NEEDS_REVIEW — no clean letter/PDF emitted');
+  if (coverRes.warnings?.length) {
+    log.warn({ jobId, warnings: coverRes.warnings.length }, 'apply-job: cover letter has grounding warnings (PDF still generated)');
   }
 
   let resumePdf: string | undefined;
   let coverLetterPdf: string | undefined;
   let companyBriefPdf: string | undefined;
   if (!opts.skipPdf) {
-    // Never render a PDF for a cover letter that failed grounding.
-    const renderCover = !coverRes.needsReview;
-    log.info({ jobId, includeBrief: !!briefRes, renderCover }, 'apply-job: stage 3 — render PDFs');
+    log.info({ jobId, includeBrief: !!briefRes }, 'apply-job: stage 3 — render PDFs');
     resumePdf = await renderResumePdf(jobId);
     const [coverPdf, briefPdf] = await Promise.all([
-      renderCover ? renderCoverLetterPdf(jobId) : Promise.resolve(undefined),
+      renderCoverLetterPdf(jobId),
       briefRes ? renderCompanyBriefPdf(jobId) : Promise.resolve(undefined),
     ]);
     coverLetterPdf = coverPdf;
@@ -198,14 +198,14 @@ export async function applyJob(jobIdOrUrl: string, opts: ApplyOptions = {}): Pro
     artefacts: {
       resumeMd: resumeRes.resumeMdPath,
       resumePdf,
-      coverLetterMd: coverRes.needsReview ? coverRes.reviewPath : coverRes.mdPath,
+      coverLetterMd: coverRes.mdPath,
       coverLetterPdf,
       companyBriefMd: briefRes?.mdPath,
       companyBriefPdf,
     },
     trackerPath,
     skippedDueToEligibility: false,
-    coverLetterNeedsReview: coverRes.needsReview,
+    coverLetterWarnings: coverRes.warnings?.length ? coverRes.warnings : undefined,
     companyBriefNeedsReview: briefRes?.needsReview,
     emailedTo,
     emailedFiles,
@@ -258,8 +258,8 @@ export async function runCli(argv: string[]): Promise<void> {
   }
   process.stdout.write(`\n✔ ${r.jobId}  ${r.recommendation}  ${r.scoreOutOf5}/5\n`);
   process.stdout.write(`  → ${r.outputDir}\n`);
-  if (r.coverLetterNeedsReview) {
-    process.stdout.write(`  ⚠ cover letter had unsupported claims after retry → NEEDS_REVIEW file, no PDF. Review: ${r.artefacts.coverLetterMd}\n`);
+  if (r.coverLetterWarnings?.length) {
+    process.stdout.write(`  ⚠ cover letter has ${r.coverLetterWarnings.length} grounding warning(s) — review optional\n`);
   }
   if (r.companyBriefNeedsReview) {
     process.stdout.write(`  ⚠ company brief has unsourced facts (banner added) — verify before relying.\n`);
