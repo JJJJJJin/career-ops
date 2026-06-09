@@ -71,6 +71,15 @@ const PATTERN_GROUPS: PatternGroup[] = [
       String.raw`this\s+role\s+(?:does\s+not|is\s+not)\s+(?:\w+\s+){0,3}sponsor`,
     ],
   },
+  {
+    flag: 'FIVE_PLUS_YEARS_EXPERIENCE',
+    label: '5+ years experience required',
+    patterns: [
+      String.raw`(?:minimum\s+of\s+)?\b(?:[5-9]|1[0-9]|2[0-9]|30)\+?\s*(?:to\s+)?(?:years|yrs)\b.*\bexperience\b`,
+      String.raw`\bexperience\b.*\b(?:[5-9]|1[0-9]|2[0-9]|30)\+?\s*(?:years|yrs)\b`,
+      String.raw`\b(?:[5-9]|1[0-9]|2[0-9]|30)\s*\+\s*years?\b`,
+    ],
+  },
 ];
 
 const COMPILED = PATTERN_GROUPS.map((g) => ({
@@ -102,8 +111,20 @@ export function scanEligibility(text: string): EligibilityFlag[] {
   return flags;
 }
 
+/** Flags that are hard blockers (citizen/PR/clearance/5+ YoE). NO_VISA_SPONSORSHIP is NOT a blocker. */
+const BLOCKER_FLAGS = new Set([
+  'AU_CITIZENSHIP_REQUIRED',
+  'AU_CITIZENSHIP_OR_PR_REQUIRED',
+  'SECURITY_CLEARANCE_REQUIRED',
+  'FIVE_PLUS_YEARS_EXPERIENCE',
+]);
+
 export function isEligible(flags: EligibilityFlag[]): boolean {
-  return flags.length === 0;
+  return !flags.some((f) => BLOCKER_FLAGS.has(f.flag));
+}
+
+export function getBlockers(flags: EligibilityFlag[]): EligibilityFlag[] {
+  return flags.filter((f) => BLOCKER_FLAGS.has(f.flag));
 }
 
 export type FlagOptions = {

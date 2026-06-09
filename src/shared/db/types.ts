@@ -7,7 +7,8 @@ export type EligibilityFlag = {
     | 'AU_CITIZENSHIP_REQUIRED'
     | 'AU_CITIZENSHIP_OR_PR_REQUIRED'
     | 'SECURITY_CLEARANCE_REQUIRED'
-    | 'NO_VISA_SPONSORSHIP';
+    | 'NO_VISA_SPONSORSHIP'
+    | 'FIVE_PLUS_YEARS_EXPERIENCE';
   evidence: string;
 };
 

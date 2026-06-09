@@ -10,7 +10,7 @@ import { db } from '../../shared/db/store.js';
 import { createLogger } from '../../shared/logger.js';
 import type { EligibilityFlag, Job, JobSummary, MatchAnalysis } from '../../shared/db/types.js';
 import { detectSource, sourceForJobId } from '../../shared/jobs/registry.js';
-import { flagEligibility } from '../flag-eligibility/index.js';
+import { flagEligibility, getBlockers } from '../flag-eligibility/index.js';
 import { summarizeJob } from '../summarize-job/index.js';
 import { matchJob } from '../match-job/index.js';
 import { ensureLibrary } from '../../shared/library/parse.js';
@@ -71,14 +71,16 @@ export async function evaluateJob(jobIdOrUrl: string, opts: EvaluateOptions = {}
     }
   }
 
-  // Step 2: eligibility heuristics. Short-circuit if any flag fires.
+  // Step 2: eligibility heuristics. Only short-circuit on hard blockers
+  // (citizen/PR/clearance/5+ YoE). NO_VISA_SPONSORSHIP is flagged but NOT a blocker.
   const eligibility = flagEligibility({ jobId: job.jobId });
+  const blockers = getBlockers(eligibility.flags);
   log.info(
-    { jobId: job.jobId, source: job.source, isEligible: eligibility.isEligible, flags: eligibility.flags.map((f) => f.flag) },
+    { jobId: job.jobId, source: job.source, isEligible: eligibility.isEligible, blockers: blockers.map((f) => f.flag), flags: eligibility.flags.map((f) => f.flag) },
     'evaluate-job: eligibility scan complete',
   );
 
-  if (!eligibility.isEligible) {
+  if (blockers.length > 0) {
     db.updateApplicationFields(job.jobId, {
       recommendation: 'NOT_FOR_YOU',
       fitScore: 0,
