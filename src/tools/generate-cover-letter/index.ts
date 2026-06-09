@@ -31,9 +31,14 @@ const SYSTEM_PROMPT = `# HOW TO WRITE
 
 # TONE
 - The voice is polite, humble, and respectful, but not timid or self-deprecating.
-- Open exactly with "I'm applying for the [role] role at [company]," then a courteous line such as expressing gratitude for their consideration.
+- Open exactly with "I'm applying for the [role] role at [company],". Do NOT put "thank you for your consideration" here — save it for the closing.
 - Stay modest in framing, but keep the achievements and numbers at full strength. Humble tone, confident facts.
-- Close with a polite, low-pressure invitation to talk ("I'd welcome the chance to discuss how I might contribute" / "happy to share more at your convenience") and a sincere thank-you.
+
+# STRUCTURE
+- Paragraph 1: Open with "I'm applying for the [role] role at [company],". Introduce the candidate's strongest relevant skills and background. No gratitude here.
+- Paragraph 2: Deep evidence. The single strongest project or experience matching the JD requirements. Numbers, stack, outcome.
+- Paragraph 3: One more piece of evidence (shorter), then close with a polite invitation + thank you. Always end the body with: "I'd welcome the chance to discuss how I might contribute, and I'm happy to share more at your convenience. Thank you very much for your time and consideration."
+- Then a blank line, then "Best regards," on its own line.
 
 # STYLE
 - Sound like a competent, considerate person writing, not a template. Vary sentence length so it breathes.
