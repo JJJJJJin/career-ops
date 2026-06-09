@@ -7,7 +7,7 @@
 import { db } from '../../shared/db/store.js';
 import { createLogger } from '../../shared/logger.js';
 import type { JobSummary } from '../../shared/db/types.js';
-import { scanEligibility } from '../flag-eligibility/index.js';
+import { scanEligibility, getBlockers } from '../flag-eligibility/index.js';
 import { summarizeJob } from '../summarize-job/index.js';
 import { ensureLibrary } from '../../shared/library/parse.js';
 import type { ContentLibrary } from '../../shared/library/types.js';
@@ -15,8 +15,8 @@ import type { ContentLibrary } from '../../shared/library/types.js';
 const log = createLogger('go-no-go');
 
 // The candidate is a recent graduate with ~1-2 years of hands-on experience.
-// A demand for 4+ years is a real gate; 3 is borderline and still worth a shot.
-const YEARS_GATE = 4;
+// 5+ years is a hard gate per user policy.
+const YEARS_GATE = 5;
 
 export type GoNoGoReason = { kind: string; detail: string };
 export type GoNoGoDecision = { jobId: string; decision: 'go' | 'low-yield'; reasons: GoNoGoReason[] };
@@ -39,8 +39,12 @@ export async function goNoGo(jobId: string, opts: GoNoGoOptions = {}): Promise<G
   const blob = libraryBlob(library);
   const reasons: GoNoGoReason[] = [];
 
-  // Regex eligibility (citizenship/PR/clearance/no-sponsorship).
-  for (const f of scanEligibility(job.description)) {
+  // Regex eligibility — only HARD blockers (citizen/PR/clearance/5+ YoE/senior).
+  // NO_VISA_SPONSORSHIP is intentionally NOT a low-yield reason.
+  // Scan both title + description (same as flag-eligibility does).
+  const allFlags = scanEligibility(`${job.title}\n${job.description}`);
+  const blockers = getBlockers(allFlags);
+  for (const f of blockers) {
     reasons.push({ kind: f.flag, detail: f.evidence });
   }
 

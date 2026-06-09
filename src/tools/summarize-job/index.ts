@@ -12,7 +12,7 @@ const SYSTEM_PROMPT = `You parse job postings so a candidate can quickly assess 
 
 For "hardMustHaves", extract only BLOCKING requirements and classify each:
 - "years_experience": a minimum years-of-experience bar (set "years" to the number).
-- "citizenship_or_pr": Australian citizenship or permanent residency required.
+- "citizenship_or_pr": ONLY when the JD literally states "Australian citizen" or "permanent resident" is required. Do NOT flag generic "full working rights" or "right to work in Australia" — those are broader and do not imply citizenship/PR.
 - "security_clearance": government security clearance required.
 - "pervasive_stack": a SINGLE technology/framework the whole role is built on (set "tech"). Only if it clearly runs through the entire posting, not a nice-to-have.
 - "other": any other genuine hard gate.
