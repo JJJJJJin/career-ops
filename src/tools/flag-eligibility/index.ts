@@ -37,7 +37,8 @@ const PATTERN_GROUPS: PatternGroup[] = [
       // "must be an AU citizen or permanent resident"
       String.raw`(?:must\s+be|applicants?\s+must\s+be|only\s+open\s+to|open\s+to)\s+(?:an?\s+)?(?:australian\s+)?(?:citizens?|permanent\s+residents?|pr)\s+(?:or|and|/)\s+(?:an?\s+)?(?:australian\s+)?(?:citizens?|permanent\s+residents?|pr)\b`,
       String.raw`(?:must\s+have|require[sd]?)\s+(?:australian\s+)?(?:permanent\s+residency|permanent\s+residence|pr\b)`,
-      String.raw`\b(?:permanent\s+residency|permanent\s+residence|pr)\s+(?:is\s+)?(?:a\s+)?(?:required|essential|mandatory|requirement)`,
+      String.raw`\b(?:permanent\s+residency|permanent\s+residence)\s+(?:or\s+(?:australian\s+)?citizenship\s+)?(?:is\s+)?(?:a\s+)?(?:required|essential|mandatory|requirement)`,
+      String.raw`\b(?:australian\s+)?(?:citizenship|permanent\s+residency)\s+(?:or|and|/)\s+(?:australian\s+)?(?:citizenship|permanent\s+residency)\s+(?:is\s+)?(?:a\s+)?(?:required|essential|mandatory|requirement)`,
       String.raw`(?:australian\s+)?(?:citizens?|permanent\s+residents?|pr)\s+(?:and|or|/)\s+(?:australian\s+)?(?:citizens?|permanent\s+residents?|pr)\s+only`,
     ],
   },
@@ -75,9 +76,26 @@ const PATTERN_GROUPS: PatternGroup[] = [
     flag: 'FIVE_PLUS_YEARS_EXPERIENCE',
     label: '5+ years experience required',
     patterns: [
-      String.raw`(?:minimum\s+of\s+)?\b(?:[5-9]|1[0-9]|2[0-9]|30)\+?\s*(?:to\s+)?(?:years|yrs)\b.*\bexperience\b`,
-      String.raw`\bexperience\b.*\b(?:[5-9]|1[0-9]|2[0-9]|30)\+?\s*(?:years|yrs)\b`,
-      String.raw`\b(?:[5-9]|1[0-9]|2[0-9]|30)\s*\+\s*years?\b`,
+      // "minimum of 5 years" / "at least 5 years" / "5+ years" / "5-7 years"
+      String.raw`(?:minimum|at\s+least|over|more\s+than)\s+(?:of\s+)?\b(?:[5-9]|1[0-9]|20)\+?\s*(?:to\s+)?(?:years|yrs)\b`,
+      String.raw`\b(?:[5-9]|1[0-9]|20)\s*\+\s*(?:years|yrs)\b`,
+      String.raw`\b(?:[6-9]|1[0-9]|20)\s*(?:years|yrs)\s+(?:of\s+)?experience\b`,
+      // "5-7 years of experience" / "5 – 8 years experience"
+      String.raw`\b(?:[5-9]|1[0-9]|20)\s*[-–—]\s*(?:[6-9]|1[0-9]|20)\s*(?:years|yrs)\b`,
+      // "experience: 5+ years" / "experience — 5+ years"
+      String.raw`\bexperience\s*[:—–-]\s*(?:[5-9]|1[0-9]|20)\s*\+?\s*(?:years|yrs)\b`,
+    ],
+  },
+  {
+    flag: 'SENIOR_ROLE',
+    label: 'Senior-level role',
+    patterns: [
+      String.raw`\bsenior\s+(?:software|backend|frontend|full.?stack|devops|platform|cloud|data|ai|machine\s+learning|systems|embedded|security|network)\s+(?:engineer|developer|architect)\b`,
+      String.raw`\b(?:sr\.?|snr\.?)\s+(?:software|backend|frontend|full.?stack|devops|engineer|developer)\b`,
+      String.raw`\bstaff\s+(?:software|backend|frontend|full.?stack|devops|platform|cloud|data|ai|machine\s+learning)\s+(?:engineer|developer|architect)\b`,
+      String.raw`\bprincipal\s+(?:software|backend|frontend|full.?stack|devops|platform|cloud|data|ai|machine\s+learning)\s+(?:engineer|developer|architect)\b`,
+      String.raw`\blead\s+(?:software|backend|frontend|full.?stack|devops|platform|cloud|data|ai|machine\s+learning)\s+(?:engineer|developer|architect)\b`,
+      String.raw`\bhead\s+of\s+(?:engineering|software|technology|ai|data)\b`,
     ],
   },
 ];
@@ -117,6 +135,7 @@ const BLOCKER_FLAGS = new Set([
   'AU_CITIZENSHIP_OR_PR_REQUIRED',
   'SECURITY_CLEARANCE_REQUIRED',
   'FIVE_PLUS_YEARS_EXPERIENCE',
+  'SENIOR_ROLE',
 ]);
 
 export function isEligible(flags: EligibilityFlag[]): boolean {
