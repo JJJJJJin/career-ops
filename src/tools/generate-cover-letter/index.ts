@@ -51,10 +51,10 @@ const SYSTEM_PROMPT = `# HOW TO WRITE
 
 const SCHEMA_HINT = `{
   "date": string,
-  "recipientBlock": string,
+  "recipientBlock": string (company name only, no address/placeholders),
   "salutation": string,
   "bodyParagraphs": [string, string, string],
-  "closing": string
+  "closing": "Best regards,"
 }`;
 
 function renderMarkdown(c: TailoredCoverLetter): string {
@@ -64,7 +64,7 @@ function renderMarkdown(c: TailoredCoverLetter): string {
   if (contact.length) lines.push(contact.join(' · '));
   lines.push('', c.date, '', c.recipientBlock, '', c.salutation, '');
   for (const p of c.bodyParagraphs) lines.push(p, '');
-  lines.push(c.closing, c.name);
+  lines.push('', c.closing, '', c.name);
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
 }
 
